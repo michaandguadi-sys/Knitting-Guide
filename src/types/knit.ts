@@ -136,3 +136,17 @@ export interface CompiledPattern {
   allRows: PatternRowInstruction[];
   compiledAt: string;
 }
+
+export interface SavedProject {
+  id: string;
+  name: string;
+  recipientName?: string;
+  pattern: CompiledPattern;
+  currentStepIndex: number;
+  completedSteps: Record<number, boolean>;
+  notes: string;
+  savedAt: string;
+  updatedAt: string;
+  imageThumbnail?: string;
+}
+
