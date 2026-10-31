@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #FAF8F5;
+    color: #1F2421;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Knitting Chart Grid Styling */
+.knit-chart-grid {
+  display: grid;
+  user-select: none;
+}
+
+.knit-chart-cell {
+  aspect-ratio: 1 / 1.15; /* Knitted stitches are slightly wider than they are tall (approx 4:3 or 1:1.2 ratio) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.15s ease;
+}
+
+.knit-chart-cell:hover {
+  outline: 2px solid #2D5A43;
+  z-index: 10;
+}
+
+/* Print styling for clean export to PDF */
+@media print {
+  header, nav, .no-print, button, .interactive-controls {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .pattern-print-container {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .page-break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
