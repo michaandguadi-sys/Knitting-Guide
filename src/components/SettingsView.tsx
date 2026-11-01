@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Globe,
   Ruler,
@@ -7,10 +7,15 @@ import {
   BookOpen,
   Info,
   Check,
+  Key,
+  Smartphone,
+  Eye,
+  EyeOff,
+  Sparkles,
 } from 'lucide-react';
 import { KnitUserConstraints, YarnWeightCategory } from '../types/knit';
 import { Language } from '../i18n/translations';
-import { YARN_SPECS, YARN_NAMES_ES } from '../engine/compiler';
+import { getStoredApiKey, setStoredApiKey } from '../utils/aiAnalyzer';
 
 interface SettingsViewProps {
   constraints: KnitUserConstraints;
@@ -30,22 +35,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onResetAll,
 }) => {
   const isEs = lang === 'es';
+  const [apiKey, setApiKey] = useState(getStoredApiKey());
+  const [showKey, setShowKey] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  const handleSaveApiKey = () => {
+    setStoredApiKey(apiKey);
+    setSaveStatus(isEs ? '¡Clave guardada con éxito!' : 'API Key saved successfully!');
+    setTimeout(() => setSaveStatus(null), 2500);
+  };
+
+  const handleClearApiKey = () => {
+    setApiKey('');
+    setStoredApiKey('');
+    setSaveStatus(isEs ? 'Clave eliminada. Modo Offline activo.' : 'Key cleared. Offline mode active.');
+    setTimeout(() => setSaveStatus(null), 2500);
+  };
 
   return (
-    <div className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-5 sm:p-8 space-y-7 max-w-3xl mx-auto">
-      <div className="border-b border-[#F0ECE6] pb-4">
+    <div className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-4 sm:p-8 space-y-6 max-w-3xl mx-auto">
+      <div className="border-b border-[#F0ECE6] pb-3">
         <h2 className="text-xl sm:text-2xl font-black text-[#1F2421]">
           {isEs ? 'Ajustes y Preferencias' : 'Settings & Preferences'}
         </h2>
         <p className="text-xs sm:text-sm text-[#6F756F] mt-1">
           {isEs
-            ? 'Personalizá el idioma, tu muestra de tensión y preferencias de tejido.'
-            : 'Customize language, gauge swatch density, and needle preferences.'}
+            ? 'Personalizá el idioma, tu muestra de tensión y configuraciones de IA.'
+            : 'Customize language, gauge swatch density, and AI vision settings.'}
         </p>
       </div>
 
       {/* 1. Language Setting */}
-      <div className="bg-[#FAF8F5] p-5 rounded-2xl border border-[#E8E3DC] space-y-3">
+      <div className="bg-[#FAF8F5] p-4 sm:p-5 rounded-2xl border border-[#E8E3DC] space-y-3">
         <div className="flex items-center gap-2">
           <Globe className="w-4 h-4 text-[#2D5A43]" />
           <h3 className="text-sm font-bold text-[#1F2421]">
@@ -59,7 +80,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onClick={() => {
               if (lang !== 'es') onToggleLang();
             }}
-            className={`p-3 rounded-xl border text-left flex items-center justify-between transition cursor-pointer active:scale-95 ${
+            className={`p-3 rounded-2xl border text-left flex items-center justify-between transition cursor-pointer active:scale-95 touch-manipulation ${
               lang === 'es'
                 ? 'bg-[#EBF2EE] border-[#2D5A43] ring-1 ring-[#2D5A43]'
                 : 'bg-white border-[#DDD7CD] hover:bg-[#F3EFEA]'
@@ -77,7 +98,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onClick={() => {
               if (lang !== 'en') onToggleLang();
             }}
-            className={`p-3 rounded-xl border text-left flex items-center justify-between transition cursor-pointer active:scale-95 ${
+            className={`p-3 rounded-2xl border text-left flex items-center justify-between transition cursor-pointer active:scale-95 touch-manipulation ${
               lang === 'en'
                 ? 'bg-[#EBF2EE] border-[#2D5A43] ring-1 ring-[#2D5A43]'
                 : 'bg-white border-[#DDD7CD] hover:bg-[#F3EFEA]'
@@ -92,8 +113,94 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Swatch Gauge Calibrator */}
-      <div className="bg-[#FAF8F5] p-5 rounded-2xl border border-[#E8E3DC] space-y-4">
+      {/* 2. Gemini AI Key (Optional for Client-Side Vision) */}
+      <div className="bg-[#FAF8F5] p-4 sm:p-5 rounded-2xl border border-[#E8E3DC] space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Key className="w-4 h-4 text-[#2D5A43]" />
+            <h3 className="text-sm font-bold text-[#1F2421]">
+              {isEs ? 'Clave de Google Gemini (Opcional)' : 'Google Gemini API Key (Optional)'}
+            </h3>
+          </div>
+          {apiKey ? (
+            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              {isEs ? 'Gemini AI Conectado' : 'Gemini AI Connected'}
+            </span>
+          ) : (
+            <span className="text-[11px] font-bold text-[#6F756F] bg-[#EFECE6] px-2 py-0.5 rounded-full">
+              {isEs ? 'Modo Rápido Offline' : 'Fast Offline Mode'}
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-[#6F756F] leading-relaxed">
+          {isEs
+            ? 'Para que la IA de Google analice cualquier foto que subas desde tu teléfono directamente en tu navegador, ingresá tu clave de Gemini gratuita. Se guarda de forma 100% privada en tu teléfono.'
+            : 'Enter a free Google Gemini key to run deep computer vision on any uploaded garment photo. Saved 100% privately in your local browser.'}
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+          <div className="relative flex-1">
+            <input
+              type={showKey ? 'text' : 'password'}
+              placeholder="AIzaSy..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="w-full text-xs sm:text-sm font-mono p-2.5 pr-9 bg-white border border-[#DDD7CD] rounded-xl focus:outline-[#2D5A43]"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6F756F] hover:text-[#1F2421]"
+              title={showKey ? 'Ocultar' : 'Mostrar'}
+            >
+              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSaveApiKey}
+              className="flex-1 sm:flex-none px-4 py-2.5 bg-[#2D5A43] hover:bg-[#234734] text-white rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer touch-manipulation min-h-[40px]"
+            >
+              {isEs ? 'Guardar' : 'Save'}
+            </button>
+            {apiKey && (
+              <button
+                type="button"
+                onClick={handleClearApiKey}
+                className="px-3 py-2.5 bg-white border border-[#DDD7CD] text-[#6F756F] hover:text-red-600 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer min-h-[40px]"
+              >
+                {isEs ? 'Borrar' : 'Clear'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {saveStatus && (
+          <div className="text-xs font-bold text-[#2D5A43] flex items-center gap-1.5 animate-in fade-in">
+            <Check className="w-3.5 h-3.5" />
+            <span>{saveStatus}</span>
+          </div>
+        )}
+
+        <div className="pt-1 text-[11px] text-[#6F756F]">
+          {isEs ? '¿No tenés una clave? Obtené una gratuita en ' : 'Need a free key? Get one at '}
+          <a
+            href="https://aistudio.google.com/apikey"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#2D5A43] font-bold underline"
+          >
+            Google AI Studio
+          </a>
+        </div>
+      </div>
+
+      {/* 3. Swatch Gauge Calibrator */}
+      <div className="bg-[#FAF8F5] p-4 sm:p-5 rounded-2xl border border-[#E8E3DC] space-y-4">
         <div className="flex items-center gap-2">
           <Ruler className="w-4 h-4 text-[#2D5A43]" />
           <h3 className="text-sm font-bold text-[#1F2421]">
@@ -102,11 +209,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
         <p className="text-xs text-[#6F756F]">
           {isEs
-            ? 'Si tejés más apretado o más flojo que el estándar (18 p / 24 vtas en 10 cm), ajustá acá para que el cálculo matemático sea exacto para tu mano.'
+            ? 'Si tu mano teje más apretado o más flojo que el estándar (18 p / 24 vtas en 10 cm), ajustá acá para que el cálculo matemático sea exacto para tus medidas.'
             : 'If your tension differs from standard (18 sts / 24 rows in 10 cm), adjust here so calculations match your personal gauge.'}
         </p>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <div>
             <label className="block text-xs font-semibold text-[#4A504A] mb-1">
               {isEs ? 'Puntos en 10 cm' : 'Stitches in 10 cm'}
@@ -121,7 +228,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   gaugeSts10cm: parseFloat(e.target.value) || 18,
                 })
               }
-              className="w-full text-sm font-bold p-2.5 bg-white border border-[#DDD7CD] rounded-xl"
+              className="w-full text-sm font-bold p-2.5 bg-white border border-[#DDD7CD] rounded-xl focus:outline-[#2D5A43]"
             />
           </div>
 
@@ -139,13 +246,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   gaugeRows10cm: parseFloat(e.target.value) || 24,
                 })
               }
-              className="w-full text-sm font-bold p-2.5 bg-white border border-[#DDD7CD] rounded-xl"
+              className="w-full text-sm font-bold p-2.5 bg-white border border-[#DDD7CD] rounded-xl focus:outline-[#2D5A43]"
             />
           </div>
         </div>
       </div>
 
-      {/* 3. Deep Reference & Guide Link */}
+      {/* 4. Phone Install / PWA instructions */}
+      <div className="p-4 rounded-2xl bg-[#F4F6F5] border border-[#D5E3DC] space-y-2">
+        <div className="flex items-center gap-2">
+          <Smartphone className="w-4 h-4 text-[#2D5A43]" />
+          <h4 className="text-xs sm:text-sm font-bold text-[#1F2421]">
+            {isEs ? '¿Cómo usar en tu teléfono como App nativa?' : 'How to install on your phone as a native app?'}
+          </h4>
+        </div>
+        <p className="text-xs text-[#4A504A] leading-relaxed">
+          {isEs
+            ? '📱 En iPhone (Safari): Tocá el botón "Compartir" (ícono del cuadrado con flecha hacia arriba) y elegí "Agregar a pantalla de inicio".'
+            : '📱 On iPhone (Safari): Tap the "Share" button and select "Add to Home Screen".'}
+        </p>
+        <p className="text-xs text-[#4A504A] leading-relaxed">
+          {isEs
+            ? '🤖 En Android (Chrome): Tocá los 3 puntos del menú y seleccioná "Instalar aplicación" o "Agregar a la pantalla principal".'
+            : '🤖 On Android (Chrome): Tap the 3 dots menu and select "Install app" or "Add to Home Screen".'}
+        </p>
+      </div>
+
+      {/* 5. Craft Notes & Deep Reference */}
       <div className="p-4 rounded-2xl bg-[#E4ECE7] border border-[#CDE1D4] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <BookOpen className="w-5 h-5 text-[#2D5A43] flex-shrink-0" />
@@ -155,7 +282,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </h4>
             <p className="text-[11px] text-[#2D5A43]">
               {isEs
-                ? 'Explicaciones sobre disminuciones, elasticidad del punto y citas académicas de MIT.'
+                ? 'Explicaciones sobre disminuciones, elasticidad del punto y citas académicas.'
                 : 'Explanations on decreases, ribbing elasticity, and MIT research.'}
             </p>
           </div>
@@ -163,13 +290,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <button
           type="button"
           onClick={onOpenCraftNotes}
-          className="px-3.5 py-2 bg-[#2D5A43] hover:bg-[#234734] text-white rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer whitespace-nowrap"
+          className="px-3.5 py-2 bg-[#2D5A43] hover:bg-[#234734] text-white rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer whitespace-nowrap min-h-[38px]"
         >
           {isEs ? 'Abrir Guía' : 'Open Guide'}
         </button>
       </div>
 
-      {/* 4. Reset App Data */}
+      {/* 6. Reset App Data */}
       <div className="pt-2 border-t border-[#F0ECE6] flex items-center justify-between">
         <span className="text-xs text-[#6F756F]">
           {isEs ? '¿Querés volver al gorro original?' : 'Reset to default project?'}
@@ -177,7 +304,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <button
           type="button"
           onClick={onResetAll}
-          className="px-3 py-1.5 rounded-xl border border-[#DDD7CD] text-xs font-semibold text-[#6F756F] hover:text-[#1F2421] hover:bg-[#FAF8F5] transition flex items-center gap-1.5 active:scale-95"
+          className="px-3 py-1.5 rounded-xl border border-[#DDD7CD] text-xs font-semibold text-[#6F756F] hover:text-[#1F2421] hover:bg-[#FAF8F5] transition flex items-center gap-1.5 active:scale-95 cursor-pointer min-h-[36px]"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span>{isEs ? 'Reiniciar todo' : 'Reset all'}</span>

@@ -14,6 +14,7 @@ import {
 import { CompiledPattern } from '../types/knit';
 import { Language, TRANSLATIONS } from '../i18n/translations';
 import { PatternSearchBar } from './PatternSearchBar';
+import { StitchChart } from './StitchChart';
 
 interface PatternViewProps {
   pattern: CompiledPattern;
@@ -33,6 +34,7 @@ export const PatternView: React.FC<PatternViewProps> = ({
   const [copied, setCopied] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDetailedCrownRows, setShowDetailedCrownRows] = useState(false);
+  const [showChart, setShowChart] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     brim: true,
     body: true,
@@ -399,6 +401,33 @@ export const PatternView: React.FC<PatternViewProps> = ({
             </div>
           );
         })}
+      </div>
+
+      {/* Stitch Chart Section */}
+      <div className="bg-[#FAF8F5] p-4 rounded-2xl border border-[#E8E3DC] space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-xs sm:text-sm font-bold text-[#1F2421]">
+              {isEs ? 'Gráfico de Puntos Interactivo' : 'Interactive Stitch Chart'}
+            </h4>
+            <p className="text-[11px] text-[#6F756F]">
+              {isEs ? 'Visualizá la cuadrícula vuelta por vuelta con símbolos' : 'Grid view with standard stitch symbols'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowChart(!showChart)}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white border border-[#DDD7CD] hover:bg-[#F3EFEA] text-[#2D5A43] transition active:scale-95 cursor-pointer touch-manipulation min-h-[38px]"
+          >
+            {showChart ? (isEs ? 'Ocultar Gráfico' : 'Hide Chart') : (isEs ? 'Ver Gráfico' : 'View Chart')}
+          </button>
+        </div>
+
+        {showChart && (
+          <div className="pt-2 animate-in fade-in">
+            <StitchChart chartData={pattern.chartData} title={pattern.title} lang={lang} />
+          </div>
+        )}
       </div>
 
       {/* Abbreviations Guide */}

@@ -1,8 +1,1 @@
-{
-  "name": "KnitVision - AI Photo to Knitting Pattern Engine",
-  "description": "Translates garment photos into verified, mathematically compiled row-by-row knitting patterns, stitch charts, and interactive counters.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
+{"name":"KnitVision - AI Photo to Knitting Pattern Engine","description":"Translates garment photos into verified, mathematically compiled row-by-row knitting patterns, stitch charts, and interactive counters.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}

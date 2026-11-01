@@ -1,0 +1,17 @@
+{
+  "name": "KnitVision - AI Photo to Knitting Pattern",
+  "short_name": "KnitVision",
+  "description": "Translates garment photos into verified, mathematically compiled knitting patterns and interactive counters.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FAF8F5",
+  "theme_color": "#2D5A43",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
