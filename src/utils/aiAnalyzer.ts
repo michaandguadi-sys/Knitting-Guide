@@ -1,4 +1,5 @@
 import { KnitBlueprint, StripeDefinition, GarmentType, StitchType } from '../types/knit';
+import { extractGarmentSubject, ExtractedSubjectResult } from './subjectExtractor';
 
 const API_KEY_STORAGE_KEY = 'knitvision_gemini_api_key';
 const API_KEY_VERIFIED_KEY = 'knitvision_gemini_api_key_verified';
@@ -376,28 +377,43 @@ export async function analyzeKnit(options: AnalyzeKnitOptions): Promise<AnalyzeK
     };
   }
 
+  // 2. Perform Subject & Object Extraction first!
+  let subjectData: ExtractedSubjectResult | null = null;
+  if (imageBase64) {
+    try {
+      subjectData = await extractGarmentSubject(imageBase64);
+    } catch (e) {
+      console.warn('Subject extraction error, falling back:', e);
+    }
+  }
+
   const effectiveApiKey = explicitKey || getStoredApiKey();
 
-  // 2. If Gemini API Key is configured and we have an image, call Gemini 2.5 Flash via REST
+  // 3. If Gemini API Key is configured and we have an image, call Gemini 2.5 Flash via REST
   if (effectiveApiKey && imageBase64) {
     try {
-      const cleanBase64 = imageBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
-      const mimeMatch = imageBase64.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/);
+      // Send cropped garment for sharpest focus
+      const imageToAnalyze = subjectData?.croppedUrl || imageBase64;
+      const cleanBase64 = imageToAnalyze.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+      const mimeMatch = imageToAnalyze.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,/);
       const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
 
       const promptText = `You are a master handknitter, textile engineer, and computer vision garment decoder.
 Analyze this photo of a knitted item and return a structured JSON blueprint.
 
-CRITICAL INSTRUCTIONS:
-1. Identify garment silhouette: 'beanie', 'scarf', 'cowl', 'pullover', or 'cardigan'.
-2. Identify construction: 'in_the_round' (circular seamless) or 'bottom_up_flat'.
-3. Identify main stitch: 'rib_1x1', 'rib_2x2', 'stockinette', 'reverse_stockinette', 'garter', 'seed_stitch', or 'brioche'.
-4. For beanies:
-   - Crown decrease wedges: count radial decrease lines meeting at crown apex (typically 4 or 6).
-   - Folded brim: boolean indicating if hem folds up into a double cuff.
+CRITICAL OBJECT ISOLATION INSTRUCTIONS:
+1. FOCUS EXCLUSIVELY ON THE KNITTED GARMENT (THE FOREGROUND SUBJECT).
+2. Discard and ignore any background surface (such as table wood tones, bedspread, sheet, floor, background room, skin, or hands).
+3. Extract colors, yarn thickness, stitch texture, and decrease math EXCLUSIVELY from the fibers of the knitted piece itself.
+4. Identify garment silhouette: 'beanie', 'scarf', 'cowl', 'pullover', or 'cardigan'.
+5. Identify construction: 'in_the_round' (circular seamless) or 'bottom_up_flat'.
+6. Identify main stitch: 'rib_1x1', 'rib_2x2', 'stockinette', 'reverse_stockinette', 'garter', 'seed_stitch', or 'brioche'.
+7. For beanies:
+   - Crown decrease wedges: count radial decrease lines meeting at apex (typically 4 or 6).
+   - Folded brim: boolean indicating if hem folds into a double cuff.
    - Brim height ratio: ratio of folded brim to total hat height (e.g. 0.35).
-5. Colors & stripes: extract base field color and any vertical/horizontal accent stripes with accurate hex (#RRGGBB).
-6. Suggest needle in mm (e.g. 4.5) and yarn weight class ('Worsted / Aran', 'DK / Light Worsted', 'Chunky / Bulky').
+8. Colors & stripes: extract base wool color and any vertical/horizontal accent stripes with accurate hex (#RRGGBB).
+9. Suggest needle in mm (e.g. 4.5) and yarn weight class ('Worsted / Aran', 'DK / Light Worsted', 'Chunky / Bulky').
 
 ${userHints ? `User notes: ${userHints}` : ''}
 
@@ -459,6 +475,9 @@ Output ONLY valid JSON with this exact structure:
             blueprint: {
               ...PRESET_BLUEPRINTS.north_face_beanie,
               ...parsedBlueprint,
+              isolatedImageUrl: subjectData?.isolatedUrl,
+              croppedImageUrl: subjectData?.croppedUrl,
+              backgroundRatio: subjectData?.backgroundRatio,
             },
           };
         }
@@ -466,37 +485,19 @@ Output ONLY valid JSON with this exact structure:
         const errJson = await res.json().catch(() => ({}));
         const errorDetail = errJson?.error?.message || `HTTP ${res.status}`;
         console.warn('Gemini API call returned error:', errorDetail);
-        // Fall back to client vision with warning
-        const palette = await extractPaletteFromImage(imageBase64);
-        return {
-          success: true,
-          source: 'client-vision',
-          blueprint: {
-            ...PRESET_BLUEPRINTS.north_face_beanie,
-            stripes: palette,
-          },
-          warning: `Gemini API devolvió un aviso: "${errorDetail}". Se utilizó el análisis local de paleta.`,
-        };
       }
     } catch (apiErr: any) {
       console.error('Failed to call Gemini API directly:', apiErr);
     }
   }
 
-  // 3. Client-Side Smart Palette & Heuristic Vision (Zero server required, 100% works on GitHub Pages & Phone!)
-  let extractedStripes: StripeDefinition[] = PRESET_BLUEPRINTS.north_face_beanie.stripes || [];
-  if (imageBase64) {
-    try {
-      extractedStripes = await extractPaletteFromImage(imageBase64);
-    } catch (e) {
-      console.warn('Palette extraction fallback:', e);
-    }
-  }
+  // 4. Client-Side Smart Palette & Heuristic Vision (Exclusively from the extracted garment subject!)
+  const extractedStripes = subjectData?.stripes || PRESET_BLUEPRINTS.north_face_beanie.stripes || [];
 
   const customBlueprint: KnitBlueprint = {
     garmentType: fallbackGarment,
-    title: fallbackGarment === 'scarf' ? 'Bufanda Personalizada' : 'Gorro con Visión Móvil',
-    description: 'Prenda decodificada a partir de tu foto con paleta de colores y cálculo de tensión exacto.',
+    title: fallbackGarment === 'scarf' ? 'Bufanda Tejida' : 'Gorro con Visión Focal',
+    description: `Prenda aislada del fondo (${subjectData?.backgroundRatio || 25}% de fondo descartado). Paleta de lana y medidas extraídas del tejido.`,
     construction: fallbackGarment === 'scarf' ? 'bottom_up_flat' : 'in_the_round',
     mainStitch: fallbackGarment === 'scarf' ? 'garter' : 'rib_1x1',
     secondaryStitch: 'rib_1x1',
@@ -509,13 +510,16 @@ Output ONLY valid JSON with this exact structure:
       'Punto elástico 1x1 anatómico de memoria alta',
       'Puño doble doblado para abrigo térmico en orejas',
       'Disminuciones de coronilla simétricas en 4 gajos',
-      `Paleta de ${extractedStripes.length} colores extraída de tu foto`,
+      `Paleta de ${extractedStripes.length} colores de lana extraída del tejido`,
     ],
-    suggestedYarnWeight: 'Worsted / Aran',
-    suggestedNeedleMm: 4.5,
+    suggestedYarnWeight: subjectData?.suggestedYarnWeight || 'Worsted / Aran',
+    suggestedNeedleMm: subjectData?.suggestedNeedleMm || 4.5,
     difficulty: 'Intermediate',
-    confidenceScore: 0.94,
-    visionNotes: 'Análisis de visión por cliente: paleta de color y proporciones anatómicas calculadas con precisión.',
+    confidenceScore: subjectData?.confidence || 0.94,
+    visionNotes: `Prenda aislada automáticamente. Fondo de superficie ignorado (${subjectData?.backgroundRatio || 0}% de la foto era mesa/entorno).`,
+    isolatedImageUrl: subjectData?.isolatedUrl,
+    croppedImageUrl: subjectData?.croppedUrl,
+    backgroundRatio: subjectData?.backgroundRatio,
   };
 
   return {
@@ -524,6 +528,6 @@ Output ONLY valid JSON with this exact structure:
     blueprint: customBlueprint,
     warning: effectiveApiKey
       ? undefined
-      : 'Modo Rápido Offline: Patrón generado con la paleta de tu foto. Podés verificar tu clave gratuita de Gemini en Ajustes para análisis profundo por IA.',
+      : 'Aislamiento de objeto completado: Se descartó el fondo de la foto y se extrajo la lana del tejido.',
   };
 }

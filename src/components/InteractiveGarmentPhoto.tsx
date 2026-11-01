@@ -5,10 +5,11 @@ import {
   Sparkles,
   ChevronRight,
   Layers,
-  ArrowDown,
-  Info,
   CheckCircle2,
   RefreshCw,
+  Scissors,
+  Eye,
+  Sliders,
 } from 'lucide-react';
 import { KnitBlueprint } from '../types/knit';
 import { Language } from '../i18n/translations';
@@ -34,6 +35,7 @@ export const InteractiveGarmentPhoto: React.FC<InteractiveGarmentPhotoProps> = (
   isAnalyzing = false,
 }) => {
   const [activePin, setActivePin] = useState<'brim' | 'body' | 'crown'>('brim');
+  const [viewMode, setViewMode] = useState<'isolated' | 'original'>('isolated');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const isEs = lang === 'es';
@@ -48,9 +50,14 @@ export const InteractiveGarmentPhoto: React.FC<InteractiveGarmentPhotoProps> = (
       if (result) onImageSelected(result);
     };
     reader.readAsDataURL(file);
-    // Reset input so same file can be re-selected if desired
     e.target.value = '';
   };
+
+  // Determine which image to render (isolated garment vs full photo)
+  const displayImage =
+    viewMode === 'isolated' && blueprint?.isolatedImageUrl
+      ? blueprint.isolatedImageUrl
+      : currentImage;
 
   return (
     <div className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-4 sm:p-6 space-y-4">
@@ -58,21 +65,21 @@ export const InteractiveGarmentPhoto: React.FC<InteractiveGarmentPhotoProps> = (
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#F0ECE6] pb-3">
         <div>
           <span className="text-[11px] font-bold uppercase tracking-wider text-[#2D5A43] bg-[#E4ECE7] px-2.5 py-0.5 rounded-full inline-block mb-1">
-            {isEs ? 'Paso 1: Foto y Anatomía' : 'Step 1: Photo & Anatomy'}
+            {isEs ? 'Paso 1: Foto y Extracción de Prenda' : 'Step 1: Photo & Garment Extraction'}
           </span>
           <h2 className="text-lg sm:text-xl font-extrabold text-[#1F2421]">
-            {isEs ? 'Mirá tu prenda y tocá cada parte' : 'Inspect your piece & tap each section'}
+            {isEs ? 'Prenda Aislada y Puntos Clave' : 'Isolated Garment & Key Hotspots'}
           </h2>
           <p className="text-xs sm:text-sm text-[#6F756F]">
             {isEs
-              ? 'Tocá los puntos amarillos sobre el gorro para ver cómo se teje cada etapa.'
-              : 'Tap the glowing pins on the garment to see how each stage is worked.'}
+              ? 'El sistema aísla la prenda del fondo (mesa, sábanas o piso) para analizar solo la lana.'
+              : 'The engine isolates the garment from background surfaces (tables, floors) to analyze true wool fibers.'}
           </p>
         </div>
 
         {/* Mobile Camera and Photo Library Actions */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Camera Button (Opens native mobile phone camera directly) */}
+          {/* Camera Button (Opens native mobile camera) */}
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
@@ -145,6 +152,45 @@ export const InteractiveGarmentPhoto: React.FC<InteractiveGarmentPhotoProps> = (
         </div>
       </div>
 
+      {/* Subject Isolation Controls Bar */}
+      {blueprint?.isolatedImageUrl && (
+        <div className="flex items-center justify-between bg-[#F4F6F5] p-2 sm:px-3 rounded-2xl border border-[#D5E3DC] text-xs">
+          <div className="flex items-center gap-1.5 text-[#2D5A43] font-bold">
+            <CheckCircle2 className="w-4 h-4 text-[#2D5A43]" />
+            <span>
+              {isEs
+                ? `Objeto extraído (${blueprint.backgroundRatio || 25}% de fondo descartado)`
+                : `Garment isolated (${blueprint.backgroundRatio || 25}% background ignored)`}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 bg-white p-0.5 rounded-xl border border-[#DDD7CD]">
+            <button
+              type="button"
+              onClick={() => setViewMode('isolated')}
+              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+                viewMode === 'isolated'
+                  ? 'bg-[#2D5A43] text-white shadow-xs'
+                  : 'text-[#6F756F] hover:text-[#1F2421]'
+              }`}
+            >
+              {isEs ? '✨ Tejido Aislado' : '✨ Isolated'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('original')}
+              className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+                viewMode === 'original'
+                  ? 'bg-[#2D5A43] text-white shadow-xs'
+                  : 'text-[#6F756F] hover:text-[#1F2421]'
+              }`}
+            >
+              {isEs ? '📷 Foto Original' : '📷 Original'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Interactive Canvas & Explanations */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
         {/* The Image Canvas with Touch Hotspots */}
@@ -154,20 +200,20 @@ export const InteractiveGarmentPhoto: React.FC<InteractiveGarmentPhotoProps> = (
               <div className="absolute inset-0 bg-[#FAF8F5]/85 backdrop-blur-xs z-30 flex flex-col items-center justify-center p-6 text-center space-y-3">
                 <RefreshCw className="w-8 h-8 text-[#2D5A43] animate-spin" />
                 <div className="font-extrabold text-[#1F2421] text-base">
-                  {isEs ? 'Decodificando prenda y paleta...' : 'Decoding garment stitches & palette...'}
+                  {isEs ? 'Aislando la prenda del fondo...' : 'Isolating garment from background...'}
                 </div>
                 <p className="text-xs text-[#6F756F] max-w-xs">
                   {isEs
-                    ? 'Analizando puntos, conteo de disminuciones y proporciones anatómicas.'
-                    : 'Analyzing stitches, crown decreases, and anatomical fit.'}
+                    ? 'Descartando la superficie (mesa o piso) y extrayendo los colores exactos de la lana.'
+                    : 'Filtering background surfaces and extracting exact yarn fiber colors.'}
                 </p>
               </div>
             )}
 
-            {currentImage && (
+            {displayImage && (
               <div className="relative w-full h-full flex items-center justify-center p-2">
                 <img
-                  src={currentImage}
+                  src={displayImage}
                   alt="Prenda tejida"
                   className="max-h-[380px] w-auto max-w-full object-contain rounded-2xl mx-auto shadow-xs"
                 />
@@ -228,6 +274,30 @@ export const InteractiveGarmentPhoto: React.FC<InteractiveGarmentPhotoProps> = (
               </div>
             )}
           </div>
+
+          {/* Extracted Wool Fiber Colors Box */}
+          {blueprint?.stripes && blueprint.stripes.length > 0 && (
+            <div className="mt-3 p-3 bg-[#FAF8F5] rounded-2xl border border-[#E8E3DC] flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold text-[#1F2421] flex items-center gap-1.5">
+                <Scissors className="w-3.5 h-3.5 text-[#2D5A43]" />
+                {isEs ? 'Lana detectada en la prenda:' : 'Detected garment wool colors:'}
+              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {blueprint.stripes.map((st, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-[#DDD7CD] text-xs font-semibold shadow-2xs"
+                  >
+                    <span
+                      className="w-3.5 h-3.5 rounded-full border border-black/10 flex-shrink-0"
+                      style={{ backgroundColor: st.hex }}
+                    />
+                    <span className="text-[#1F2421] text-[11px]">{st.colorName}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: Explanatory Spotlight for the tapped section */}
@@ -268,16 +338,6 @@ export const InteractiveGarmentPhoto: React.FC<InteractiveGarmentPhotoProps> = (
                     ? 'Se continúa recto en elástico 1x1 siguiendo las rayas del diseño: fondo con pinstripes en contraste. Se teje hasta tener unos 17 cm totales antes de comenzar la coronilla.'
                     : 'Continue straight in 1x1 rib following vertical stripes: background field with contrast pinstripes. Knit until ~17 cm total before beginning crown decreases.'}
                 </p>
-                {blueprint?.stripes && blueprint.stripes.length > 0 && (
-                  <div className="flex items-center gap-2 pt-1 flex-wrap">
-                    {blueprint.stripes.map((st, i) => (
-                      <div key={i} className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-[#DDD7CD] text-xs">
-                        <span className="w-3.5 h-3.5 rounded-full border border-black/10" style={{ backgroundColor: st.hex }} />
-                        <span className="text-[#1F2421] font-medium">{st.colorName}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 

@@ -49,6 +49,9 @@ export interface KnitBlueprint {
   difficulty: 'Beginner' | 'Advanced Beginner' | 'Intermediate' | 'Advanced';
   confidenceScore: number;
   visionNotes?: string;
+  isolatedImageUrl?: string;
+  croppedImageUrl?: string;
+  backgroundRatio?: number;
 }
 
 export interface KnitUserConstraints {
