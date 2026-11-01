@@ -2,20 +2,28 @@ import React, { useState } from 'react';
 import {
   Globe,
   Ruler,
-  Sliders,
   RotateCcw,
   BookOpen,
-  Info,
   Check,
   Key,
   Smartphone,
   Eye,
   EyeOff,
   Sparkles,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  FlaskConical,
 } from 'lucide-react';
-import { KnitUserConstraints, YarnWeightCategory } from '../types/knit';
+import { KnitUserConstraints } from '../types/knit';
 import { Language } from '../i18n/translations';
-import { getStoredApiKey, setStoredApiKey } from '../utils/aiAnalyzer';
+import {
+  getStoredApiKey,
+  setStoredApiKey,
+  isApiKeyVerified,
+  verifyGeminiApiKey,
+  KeyVerificationResult,
+} from '../utils/aiAnalyzer';
 
 interface SettingsViewProps {
   constraints: KnitUserConstraints;
@@ -37,19 +45,48 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const isEs = lang === 'es';
   const [apiKey, setApiKey] = useState(getStoredApiKey());
   const [showKey, setShowKey] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<KeyVerificationResult | null>(() => {
+    if (getStoredApiKey() && isApiKeyVerified()) {
+      return {
+        valid: true,
+        message: '✓ Clave guardada y verificada anteriormente con Google Gemini 2.5 Flash.',
+        model: 'gemini-2.5-flash',
+      };
+    }
+    return null;
+  });
 
-  const handleSaveApiKey = () => {
-    setStoredApiKey(apiKey);
-    setSaveStatus(isEs ? '¡Clave guardada con éxito!' : 'API Key saved successfully!');
-    setTimeout(() => setSaveStatus(null), 2500);
+  const handleVerifyAndSave = async () => {
+    if (!apiKey.trim()) {
+      setStoredApiKey('');
+      setVerificationResult({
+        valid: false,
+        message: isEs ? 'Ingresá una clave antes de verificar.' : 'Please enter an API key to test.',
+      });
+      return;
+    }
+
+    setIsVerifying(true);
+    setVerificationResult(null);
+
+    try {
+      const result = await verifyGeminiApiKey(apiKey.trim());
+      setVerificationResult(result);
+    } catch (err: any) {
+      setVerificationResult({
+        valid: false,
+        message: err.message || 'Error inesperado durante la verificación.',
+      });
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const handleClearApiKey = () => {
     setApiKey('');
     setStoredApiKey('');
-    setSaveStatus(isEs ? 'Clave eliminada. Modo Offline activo.' : 'Key cleared. Offline mode active.');
-    setTimeout(() => setSaveStatus(null), 2500);
+    setVerificationResult(null);
   };
 
   return (
@@ -60,8 +97,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </h2>
         <p className="text-xs sm:text-sm text-[#6F756F] mt-1">
           {isEs
-            ? 'Personalizá el idioma, tu muestra de tensión y configuraciones de IA.'
-            : 'Customize language, gauge swatch density, and AI vision settings.'}
+            ? 'Personalizá el idioma, tu muestra de tensión y verificá tu clave de Google Gemini.'
+            : 'Customize language, tension gauge, and test your Google Gemini API key.'}
         </p>
       </div>
 
@@ -113,22 +150,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Gemini AI Key (Optional for Client-Side Vision) */}
-      <div className="bg-[#FAF8F5] p-4 sm:p-5 rounded-2xl border border-[#E8E3DC] space-y-3">
+      {/* 2. Google Gemini AI Key with Active Verification */}
+      <div className="bg-[#FAF8F5] p-4 sm:p-5 rounded-2xl border border-[#E8E3DC] space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Key className="w-4 h-4 text-[#2D5A43]" />
             <h3 className="text-sm font-bold text-[#1F2421]">
-              {isEs ? 'Clave de Google Gemini (Opcional)' : 'Google Gemini API Key (Optional)'}
+              {isEs ? 'Clave de Google Gemini y Verificación' : 'Google Gemini API Key & Verification'}
             </h3>
           </div>
-          {apiKey ? (
-            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+
+          {/* Active status pill */}
+          {verificationResult?.valid ? (
+            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-2xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              {isEs ? 'Gemini AI Conectado' : 'Gemini AI Connected'}
+              <span>{isEs ? 'Conexión Activa y Verificada' : 'Connected & Verified'}</span>
+            </span>
+          ) : apiKey ? (
+            <span className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span>{isEs ? 'Sin Verificar' : 'Unverified'}</span>
             </span>
           ) : (
-            <span className="text-[11px] font-bold text-[#6F756F] bg-[#EFECE6] px-2 py-0.5 rounded-full">
+            <span className="text-[11px] font-bold text-[#6F756F] bg-[#EFECE6] px-2.5 py-0.5 rounded-full">
               {isEs ? 'Modo Rápido Offline' : 'Fast Offline Mode'}
             </span>
           )}
@@ -136,66 +180,116 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <p className="text-xs text-[#6F756F] leading-relaxed">
           {isEs
-            ? 'Para que la IA de Google analice cualquier foto que subas desde tu teléfono directamente en tu navegador, ingresá tu clave de Gemini gratuita. Se guarda de forma 100% privada en tu teléfono.'
-            : 'Enter a free Google Gemini key to run deep computer vision on any uploaded garment photo. Saved 100% privately in your local browser.'}
+            ? 'Para verificar que tu clave de Gemini realmente funciona, ingresala abajo y tocá "Verificar y Guardar". Haremos una llamada de prueba directa a Google AI Studio para confirmar que tu cuota y permisos están activos.'
+            : 'To verify your Gemini key is working, enter it below and tap "Verify & Save". We will make a live ping call to Google AI Studio to confirm your quota and permissions.'}
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-2 pt-1">
-          <div className="relative flex-1">
+        {/* Input box */}
+        <div className="space-y-3">
+          <div className="relative">
             <input
               type={showKey ? 'text' : 'password'}
               placeholder="AIzaSy..."
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="w-full text-xs sm:text-sm font-mono p-2.5 pr-9 bg-white border border-[#DDD7CD] rounded-xl focus:outline-[#2D5A43]"
+              onChange={(e) => {
+                setApiKey(e.target.value);
+                setVerificationResult(null);
+              }}
+              className="w-full text-xs sm:text-sm font-mono p-3 pr-10 bg-white border border-[#DDD7CD] rounded-xl focus:outline-[#2D5A43] shadow-2xs"
             />
             <button
               type="button"
               onClick={() => setShowKey(!showKey)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#6F756F] hover:text-[#1F2421]"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6F756F] hover:text-[#1F2421] p-1 cursor-pointer"
               title={showKey ? 'Ocultar' : 'Mostrar'}
             >
               {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
-              onClick={handleSaveApiKey}
-              className="flex-1 sm:flex-none px-4 py-2.5 bg-[#2D5A43] hover:bg-[#234734] text-white rounded-xl text-xs font-bold transition active:scale-95 cursor-pointer touch-manipulation min-h-[40px]"
+              onClick={handleVerifyAndSave}
+              disabled={isVerifying}
+              className="flex-1 sm:flex-none px-5 py-2.5 bg-[#2D5A43] hover:bg-[#234734] disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer touch-manipulation min-h-[42px] shadow-xs"
             >
-              {isEs ? 'Guardar' : 'Save'}
+              {isVerifying ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>{isEs ? 'Verificando con Google...' : 'Testing with Google...'}</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  <span>{isEs ? 'Verificar y Guardar' : 'Verify & Save'}</span>
+                </>
+              )}
             </button>
+
             {apiKey && (
               <button
                 type="button"
                 onClick={handleClearApiKey}
-                className="px-3 py-2.5 bg-white border border-[#DDD7CD] text-[#6F756F] hover:text-red-600 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer min-h-[40px]"
+                className="px-4 py-2.5 bg-white border border-[#DDD7CD] text-[#6F756F] hover:text-red-600 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer touch-manipulation min-h-[42px]"
               >
-                {isEs ? 'Borrar' : 'Clear'}
+                {isEs ? 'Borrar Clave' : 'Clear Key'}
               </button>
             )}
           </div>
         </div>
 
-        {saveStatus && (
-          <div className="text-xs font-bold text-[#2D5A43] flex items-center gap-1.5 animate-in fade-in">
-            <Check className="w-3.5 h-3.5" />
-            <span>{saveStatus}</span>
+        {/* Live Verification Feedback Card */}
+        {verificationResult && (
+          <div
+            className={`p-3.5 rounded-2xl border flex items-start gap-3 animate-in fade-in ${
+              verificationResult.valid
+                ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                : 'bg-red-50/80 border-red-300 text-red-950'
+            }`}
+          >
+            {verificationResult.valid ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-1">
+              <div className="text-xs sm:text-sm font-bold">
+                {verificationResult.valid
+                  ? (isEs ? '¡Clave Verificada y Funcionando!' : 'Key Verified & Active!')
+                  : (isEs ? 'Error en la verificación de la clave' : 'API Key Verification Failed')}
+              </div>
+              <p className="text-xs leading-relaxed opacity-90">
+                {verificationResult.message}
+              </p>
+              {verificationResult.latencyMs && (
+                <div className="text-[11px] opacity-75 font-mono">
+                  {isEs ? 'Latencia del servidor:' : 'Server latency:'} {verificationResult.latencyMs} ms • Modelo: {verificationResult.model}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        <div className="pt-1 text-[11px] text-[#6F756F]">
-          {isEs ? '¿No tenés una clave? Obtené una gratuita en ' : 'Need a free key? Get one at '}
-          <a
-            href="https://aistudio.google.com/apikey"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#2D5A43] font-bold underline"
-          >
-            Google AI Studio
-          </a>
+        {/* Info & Free Key Link */}
+        <div className="pt-1 text-[11px] text-[#6F756F] space-y-1">
+          <div>
+            🔒 {isEs
+              ? 'Tu clave se almacena de forma 100% privada en tu dispositivo y nunca pasa por un servidor externo.'
+              : 'Your key is saved 100% privately in your browser and never touches an external server.'}
+          </div>
+          <div>
+            {isEs ? '¿No tenés una clave de Gemini? Creá una gratis en ' : 'Need a Gemini key? Create one for free at '}
+            <a
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#2D5A43] font-bold underline"
+            >
+              Google AI Studio
+            </a>
+          </div>
         </div>
       </div>
 

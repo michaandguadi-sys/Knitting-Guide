@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Header, AppNavTab } from './components/Header';
-import { MobileBottomNav } from './components/MobileBottomNav';
+import { BottomNav } from './components/BottomNav';
 import { InteractiveGarmentPhoto } from './components/InteractiveGarmentPhoto';
 import { KnitterEssentialsCard } from './components/KnitterEssentialsCard';
 import { PatternView } from './components/PatternView';
@@ -199,7 +199,7 @@ export default function App() {
       />
 
       {/* Main Tabbed Container: Clear, Distinct, Never Overwhelming */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-6 pb-24 md:pb-10">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-6 pb-28 sm:pb-32">
         {/* Status / Notice Banner */}
         {analysisNotice && (
           <div className="bg-[#E4ECE7] border border-[#C2DEC8] text-[#1C3A2B] px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 shadow-2xs animate-in fade-in">
@@ -298,8 +298,8 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile Bottom Navigation Bar (Visible only on phones/small screens) */}
-      <MobileBottomNav
+      {/* Bottom Navigation Bar (Primary Navigation on All Devices) */}
+      <BottomNav
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         lang={lang}
@@ -314,7 +314,7 @@ export default function App() {
       />
 
       {/* Footer */}
-      <footer className="border-t border-[#E8E3DC] bg-white py-5 text-center text-xs text-[#6F756F] no-print mt-auto mb-14 md:mb-0">
+      <footer className="border-t border-[#E8E3DC] bg-white py-5 text-center text-xs text-[#6F756F] no-print mt-auto mb-20 sm:mb-24">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>KnitVision • {isEs ? 'Patrón a dos agujas calculado matemáticamente' : 'Mathematically compiled knitting pattern'}</span>
           <button

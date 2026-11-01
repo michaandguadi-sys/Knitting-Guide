@@ -1,6 +1,7 @@
 import { KnitBlueprint, StripeDefinition, GarmentType, StitchType } from '../types/knit';
 
 const API_KEY_STORAGE_KEY = 'knitvision_gemini_api_key';
+const API_KEY_VERIFIED_KEY = 'knitvision_gemini_api_key_verified';
 
 export function getStoredApiKey(): string {
   try {
@@ -10,15 +11,105 @@ export function getStoredApiKey(): string {
   }
 }
 
-export function setStoredApiKey(key: string): void {
+export function isApiKeyVerified(): boolean {
+  try {
+    return localStorage.getItem(API_KEY_VERIFIED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setStoredApiKey(key: string, verified = false): void {
   try {
     if (!key) {
       localStorage.removeItem(API_KEY_STORAGE_KEY);
+      localStorage.removeItem(API_KEY_VERIFIED_KEY);
     } else {
       localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+      if (verified) {
+        localStorage.setItem(API_KEY_VERIFIED_KEY, 'true');
+      } else {
+        localStorage.removeItem(API_KEY_VERIFIED_KEY);
+      }
     }
   } catch (e) {
     console.error('Failed to save API key:', e);
+  }
+}
+
+export interface KeyVerificationResult {
+  valid: boolean;
+  message: string;
+  model?: string;
+  latencyMs?: number;
+}
+
+/**
+ * Actively calls the Google Gemini API to verify the key works and has available quota
+ */
+export async function verifyGeminiApiKey(apiKey: string): Promise<KeyVerificationResult> {
+  const cleanKey = apiKey.trim();
+  if (!cleanKey) {
+    return {
+      valid: false,
+      message: 'La clave no puede estar vacía.',
+    };
+  }
+
+  const startTime = Date.now();
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(
+        cleanKey
+      )}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: 'Ping test for knitting pattern engine. Reply with single word OK.' }],
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 5,
+            temperature: 0,
+          },
+        }),
+      }
+    );
+
+    const latencyMs = Date.now() - startTime;
+
+    if (res.ok) {
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        setStoredApiKey(cleanKey, true);
+        return {
+          valid: true,
+          message: '✓ Clave verificada con éxito. Gemini 2.5 Flash está activo y respondiendo.',
+          model: 'gemini-2.5-flash',
+          latencyMs,
+        };
+      }
+    }
+
+    // Parse specific error from Google API
+    const errorJson = await res.json().catch(() => ({}));
+    const apiError = errorJson?.error?.message || errorJson?.error?.status || `Error HTTP ${res.status}`;
+    setStoredApiKey(cleanKey, false);
+
+    return {
+      valid: false,
+      message: `Google AI rechazó la clave: ${apiError}`,
+    };
+  } catch (err: any) {
+    setStoredApiKey(cleanKey, false);
+    return {
+      valid: false,
+      message: `Error de conexión: ${err.message || 'No se pudo conectar con el servidor de Google'}`,
+    };
   }
 }
 
@@ -193,7 +284,6 @@ export async function extractPaletteFromImage(imageSrc: string): Promise<StripeD
 
           if (a < 128) continue; // skip transparent
 
-          // Quantize to 32 steps per channel
           const qr = Math.round(r / 32) * 32;
           const qg = Math.round(g / 32) * 32;
           const qb = Math.round(b / 32) * 32;
@@ -222,7 +312,7 @@ export async function extractPaletteFromImage(imageSrc: string): Promise<StripeD
           role: 'base',
         });
 
-        if (sorted.length > 1 && sorted[1].count > (baseColor.count * 0.15)) {
+        if (sorted.length > 1 && sorted[1].count > baseColor.count * 0.15) {
           const c2 = sorted[1];
           stripes.push({
             colorName: 'Línea de Contraste',
@@ -232,7 +322,7 @@ export async function extractPaletteFromImage(imageSrc: string): Promise<StripeD
           });
         }
 
-        if (sorted.length > 2 && sorted[2].count > (baseColor.count * 0.08)) {
+        if (sorted.length > 2 && sorted[2].count > baseColor.count * 0.08) {
           const c3 = sorted[2];
           stripes.push({
             colorName: 'Color Acento',
@@ -374,9 +464,21 @@ Output ONLY valid JSON with this exact structure:
         }
       } else {
         const errJson = await res.json().catch(() => ({}));
-        console.warn('Gemini API call returned non-200:', errJson);
+        const errorDetail = errJson?.error?.message || `HTTP ${res.status}`;
+        console.warn('Gemini API call returned error:', errorDetail);
+        // Fall back to client vision with warning
+        const palette = await extractPaletteFromImage(imageBase64);
+        return {
+          success: true,
+          source: 'client-vision',
+          blueprint: {
+            ...PRESET_BLUEPRINTS.north_face_beanie,
+            stripes: palette,
+          },
+          warning: `Gemini API devolvió un aviso: "${errorDetail}". Se utilizó el análisis local de paleta.`,
+        };
       }
-    } catch (apiErr) {
+    } catch (apiErr: any) {
       console.error('Failed to call Gemini API directly:', apiErr);
     }
   }
@@ -391,7 +493,6 @@ Output ONLY valid JSON with this exact structure:
     }
   }
 
-  const baseColorHex = extractedStripes[0]?.hex || '#6B7A6C';
   const customBlueprint: KnitBlueprint = {
     garmentType: fallbackGarment,
     title: fallbackGarment === 'scarf' ? 'Bufanda Personalizada' : 'Gorro con Visión Móvil',
@@ -423,6 +524,6 @@ Output ONLY valid JSON with this exact structure:
     blueprint: customBlueprint,
     warning: effectiveApiKey
       ? undefined
-      : 'Modo Offline Activo: Patrón generado con la paleta de tu foto. Podés agregar tu clave gratuita de Gemini en Ajustes para análisis profundo por IA.',
+      : 'Modo Rápido Offline: Patrón generado con la paleta de tu foto. Podés verificar tu clave gratuita de Gemini en Ajustes para análisis profundo por IA.',
   };
 }
