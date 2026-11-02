@@ -85,7 +85,7 @@ export const CraftNotesModal: React.FC<CraftNotesModalProps> = ({
             </h4>
             <p className="leading-relaxed">
               {isEs
-                ? 'El gorro de muestra (estilo The North Face o gorro pescador clásico) utiliza 4 líneas de disminución simétricas. En cada vuelta de disminución, se cierran 2 puntos por gajo (1 a la izquierda con surjete simple y 1 a la derecha con 2 puntos juntos), lo que resta exactamente 8 puntos por vuelta. Al alternar una vuelta de disminuciones con una vuelta sin disminuciones, se logra una inclinación uniforme de 45° que redondea la cabeza sin formar picos ni frunces desprolijos.'
+                ? 'Un gorro clásico utiliza 4 líneas de disminución simétricas. En cada vuelta de disminución, se cierran 2 puntos por gajo (1 a la izquierda con surjete simple y 1 a la derecha con 2 puntos juntos), lo que resta exactamente 8 puntos por vuelta. Al alternar una vuelta de disminuciones con una vuelta sin disminuciones, se logra una inclinación uniforme de 45° que redondea la cabeza sin formar picos ni frunces desprolijos.'
                 : 'The reference beanie features 4 symmetrical decrease lines. On decrease rounds, 2 stitches are reduced per wedge (1 left-slanting ssk, 1 right-slanting k2tog), removing exactly 8 stitches per round. Alternating decrease rounds with plain rounds yields a steady 45° incline that fits the cranial curvature smoothly without bunching.'}
             </p>
           </div>

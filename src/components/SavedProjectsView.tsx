@@ -16,7 +16,7 @@ import { Language } from '../i18n/translations';
 
 interface SavedProjectsViewProps {
   savedProjects: SavedProject[];
-  currentPattern: CompiledPattern;
+  currentPattern: CompiledPattern | null;
   onLoadProject: (project: SavedProject) => void;
   onSaveCurrentAsProject: (projectName: string, recipientName: string) => void;
   onDeleteProject: (projectId: string) => void;
@@ -44,8 +44,8 @@ export const SavedProjectsView: React.FC<SavedProjectsViewProps> = ({
   const handleStartSave = () => {
     setNewProjectName(
       isEs
-        ? `Gorro The North Face (${new Date().toLocaleDateString('es-AR')})`
-        : `The North Face Beanie (${new Date().toLocaleDateString('en-US')})`
+        ? `${currentPattern?.title ?? 'Mi prenda'} (${new Date().toLocaleDateString('es-AR')})`
+        : `${currentPattern?.title ?? 'My piece'} (${new Date().toLocaleDateString('en-US')})`
     );
     setShowSaveModal(true);
   };

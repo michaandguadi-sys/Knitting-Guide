@@ -16,13 +16,12 @@ import {
   FlaskConical,
 } from 'lucide-react';
 import { KnitUserConstraints } from '../types/knit';
+import { checkKey } from '../decode/gemini';
 import { Language } from '../i18n/translations';
 import {
   getStoredApiKey,
   setStoredApiKey,
   isApiKeyVerified,
-  verifyGeminiApiKey,
-  KeyVerificationResult,
 } from '../utils/aiAnalyzer';
 
 interface SettingsViewProps {
@@ -46,12 +45,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [apiKey, setApiKey] = useState(getStoredApiKey());
   const [showKey, setShowKey] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<KeyVerificationResult | null>(() => {
+  const [verificationResult, setVerificationResult] = useState<{ valid: boolean; message: string; model?: string; latencyMs?: number } | null>(() => {
     if (getStoredApiKey() && isApiKeyVerified()) {
       return {
         valid: true,
-        message: '✓ Clave guardada y verificada anteriormente con Google Gemini 2.5 Flash.',
-        model: 'gemini-2.5-flash',
+        message: isEs ? '✓ Clave guardada y verificada anteriormente.' : '✓ Key saved and verified earlier.',
       };
     }
     return null;
@@ -71,8 +69,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setVerificationResult(null);
 
     try {
-      const result = await verifyGeminiApiKey(apiKey.trim());
-      setVerificationResult(result);
+      const key = apiKey.trim();
+      const started = Date.now();
+      const result = await checkKey(key);
+      setStoredApiKey(key, result.valid);
+      setVerificationResult(
+        result.valid
+          ? {
+              valid: true,
+              message: isEs ? `✓ Clave verificada. Se va a usar ${result.model}.` : `✓ Key verified. ${result.model} will be used.`,
+              model: result.model,
+              latencyMs: Date.now() - started,
+            }
+          : {
+              valid: false,
+              message: isEs ? `Google no aceptó la clave: ${result.detail}` : `Google did not accept the key: ${result.detail}`,
+            }
+      );
     } catch (err: any) {
       setVerificationResult({
         valid: false,
@@ -180,8 +193,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <p className="text-xs text-[#6F756F] leading-relaxed">
           {isEs
-            ? 'Para verificar que tu clave de Gemini realmente funciona, ingresala abajo y tocá "Verificar y Guardar". Haremos una llamada de prueba directa a Google AI Studio para confirmar que tu cuota y permisos están activos.'
-            : 'To verify your Gemini key is working, enter it below and tap "Verify & Save". We will make a live ping call to Google AI Studio to confirm your quota and permissions.'}
+            ? 'Con una clave, la lectura es mucho mejor: la IA mira tus fotos y las compara con las mediciones. Tus fotos se envían a Google para analizarlas, y la clave queda solo en este teléfono. Sin clave, nada sale de tu teléfono.'
+            : 'With a key the reading is far better: the AI looks at your photos and checks them against the measurements. Your photos are sent to Google for analysis, and the key stays only on this phone. Without a key nothing leaves your phone.'}
         </p>
 
         {/* Input box */}

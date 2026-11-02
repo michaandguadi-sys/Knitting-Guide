@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import { CompiledPattern, KnitUserConstraints, YarnWeightCategory } from '../types/knit';
 import { Language } from '../i18n/translations';
-import { YARN_NAMES_ES } from '../engine/compiler';
+import { YARN_NAMES_ES, sizePresetsFor } from '../engine/compiler';
+import { STITCHES } from '../engine/stitches';
 
 interface KnitterEssentialsCardProps {
   pattern: CompiledPattern;
@@ -28,19 +29,20 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
   const [showAdvancedTension, setShowAdvancedTension] = useState(false);
   const isEs = lang === 'es';
 
-  const sizeOptions = [
-    { id: 'baby', label: isEs ? '👶 Bebé' : '👶 Baby', circ: 42, len: 16, brim: 4 },
-    { id: 'child', label: isEs ? '🧒 Infantil' : '🧒 Child', circ: 50, len: 20, brim: 6 },
-    { id: 'adult_m', label: isEs ? '🧑 Adulto' : '🧑 Adult', circ: 56, len: 22, brim: 7.5 },
-  ];
+  const garment = pattern.blueprint.garmentType;
+  const sizeOptions = sizePresetsFor(garment, lang);
+  const stitch = STITCHES[pattern.blueprint.mainStitch];
+  const stitchName = isEs ? stitch.name.es : stitch.name.en;
+  const inRound = pattern.allRows.some((r) => r.side === 'round');
+  const sizeUnits = garment === 'scarf' ? 'width × length' : 'around × tall';
 
-  const handleSelectSize = (opt: (typeof sizeOptions)[0]) => {
+  const handleSelectSize = (opt: (typeof sizeOptions)[number]) => {
     onUpdateConstraints({
       ...constraints,
       targetSize: opt.id,
       circumferenceCm: opt.circ,
       lengthCm: opt.len,
-      brimLengthCm: opt.brim,
+      brimLengthCm: 'brim' in opt ? (opt.brim as number) : constraints.brimLengthCm,
     });
   };
 
@@ -49,12 +51,12 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F0ECE6] pb-3">
         <div>
           <h2 className="text-lg sm:text-xl font-black text-[#1F2421]">
-            {isEs ? '2. Lo que necesitás saber para tejer' : '2. What you need to know before knitting'}
+            {isEs ? 'Lo que necesitás para tejer' : 'What you need to knit this'}
           </h2>
           <p className="text-xs sm:text-sm text-[#6F756F]">
             {isEs
-              ? 'Las medidas y agujas ya calculadas matemáticamente para esta prenda.'
-              : 'Measurements and needles pre-calculated for this piece.'}
+              ? 'Se recalcula al cambiar el tamaño o tu muestra.'
+              : 'Recalculates when you change the size or your swatch.'}
           </p>
         </div>
 
@@ -91,7 +93,7 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
             {constraints.needleSizeMm} mm
           </div>
           <span className="text-[11px] text-[#6F756F] block leading-tight">
-            {isEs ? 'Circulares con cable de 40 cm' : '40cm circular needles'}
+            {inRound ? (isEs ? 'Circulares' : 'Circular needles') : isEs ? 'Rectas o circulares' : 'Straight or circular'}
           </span>
         </div>
 
@@ -104,7 +106,7 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
             {pattern.calculatedGauge.castOnSts} {isEs ? 'puntos' : 'sts'}
           </div>
           <span className="text-[11px] text-[#2D5A43] font-semibold block leading-tight">
-            {isEs ? 'En punto elástico 1x1' : 'In 1x1 ribbing'}
+            {stitchName}
           </span>
         </div>
 
@@ -117,7 +119,7 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
             ~{pattern.yarnEstimates.totalGrams} g
           </div>
           <span className="text-[11px] text-[#6F756F] block leading-tight">
-            {isEs ? '1 ovillo (semigrueso / 4/7)' : '1 skein (Worsted weight)'}
+            {pattern.yarnEstimates.skeinsApprox} {isEs ? 'ovillo(s) de 100 g' : '100 g skein(s)'}
           </span>
         </div>
 
@@ -130,7 +132,9 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
             {pattern.finishedDimensions.circumferenceCm} × {pattern.finishedDimensions.totalLengthCm} cm
           </div>
           <span className="text-[11px] text-[#6F756F] block leading-tight">
-            {isEs ? 'Con puño doblado de 7.5 cm' : 'With 7.5cm folded cuff'}
+            {pattern.blueprint.hasFoldedBrim && garment === 'beanie'
+              ? isEs ? `Con puño doblado de ${pattern.finishedDimensions.brimCm} cm` : `With ${pattern.finishedDimensions.brimCm} cm folded brim`
+              : isEs ? (garment === 'scarf' ? 'Ancho × largo' : 'Contorno × alto') : sizeUnits}
           </span>
         </div>
       </div>
@@ -162,7 +166,7 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
                 : 'If your tension differs from standard, adjust your 10cm swatch count here. The pattern recalculates automatically.'}
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-[#1F2421] mb-1">
                   {isEs ? 'Puntos en 10 cm' : 'Stitches in 10 cm'}
@@ -174,7 +178,25 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
                   onChange={(e) =>
                     onUpdateConstraints({
                       ...constraints,
-                      gaugeSts10cm: parseFloat(e.target.value) || 18,
+                      gaugeSts10cm: Math.max(4, parseFloat(e.target.value) || 18),
+                    })
+                  }
+                  className="w-full text-sm font-bold p-2.5 bg-[#FAF8F5] border border-[#DDD7CD] rounded-xl"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#1F2421] mb-1">
+                  {isEs ? 'Vueltas en 10 cm' : 'Rows in 10 cm'}
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={constraints.gaugeRows10cm}
+                  onChange={(e) =>
+                    onUpdateConstraints({
+                      ...constraints,
+                      gaugeRows10cm: Math.max(4, parseFloat(e.target.value) || 24),
                     })
                   }
                   className="w-full text-sm font-bold p-2.5 bg-[#FAF8F5] border border-[#DDD7CD] rounded-xl"
@@ -195,7 +217,7 @@ export const KnitterEssentialsCard: React.FC<KnitterEssentialsCardProps> = ({
                   }
                   className="w-full text-xs font-medium p-2.5 bg-[#FAF8F5] border border-[#DDD7CD] rounded-xl"
                 >
-                  {[3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 7.0, 8.0].map((mm) => (
+                  {[2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 7.0, 8.0, 9.0, 10.0, 12.0].map((mm) => (
                     <option key={mm} value={mm}>
                       {mm} mm
                     </option>

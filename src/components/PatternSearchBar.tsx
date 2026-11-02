@@ -20,18 +20,18 @@ export const PatternSearchBar: React.FC<PatternSearchBarProps> = ({
   const quickChips = isEs
     ? [
         { label: '🧵 Montar puntos', query: 'montar' },
-        { label: '📉 Disminuciones', query: 'disminución' },
+        { label: '📉 Disminuciones', query: 'disminu' },
         { label: '🥢 Agujas', query: 'agujas' },
-        { label: '🧶 Lana y ovillos', query: 'lana' },
+        { label: '🧶 Lana y ovillos', query: 'hilado' },
         { label: '🔄 Puño doblado', query: 'puño' },
-        { label: '✨ Surjete simple', query: 'surjete' },
+        { label: '✨ Surjete simple (SS)', query: 'SS' },
       ]
     : [
         { label: '🧵 Cast On', query: 'cast on' },
-        { label: '📉 Decreases', query: 'decrease' },
+        { label: '📉 Crown', query: 'crown' },
         { label: '🥢 Needles', query: 'needles' },
         { label: '🧶 Yarn', query: 'yarn' },
-        { label: '🔄 Folded Cuff', query: 'cuff' },
+        { label: '🔄 Brim', query: 'brim' },
         { label: '✨ SSK / k2tog', query: 'ssk' },
       ];
 

@@ -70,9 +70,9 @@ export const Header: React.FC<HeaderProps> = ({
                 />
                 <span>
                   {hasKey && isVerified
-                    ? 'Gemini 2.5 Activo'
+                    ? (isEs ? 'IA activa' : 'AI on')
                     : hasKey
-                    ? (isEs ? 'Gemini Sin Verificar' : 'Gemini Unverified')
+                    ? (isEs ? 'IA sin verificar' : 'AI unverified')
                     : (isEs ? 'Modo Offline' : 'Offline Mode')}
                 </span>
               </button>
