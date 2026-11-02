@@ -26,7 +26,7 @@ export const StitchChart: React.FC<StitchChartProps> = ({ chartData, title, lang
             {t.chartTitle}
           </h3>
           <p className="text-xs sm:text-sm text-[#6F756F]">
-            {t.chartSubtitle}
+            {chartData.readingNote || t.chartSubtitle}
           </p>
         </div>
 

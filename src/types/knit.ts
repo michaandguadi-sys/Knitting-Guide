@@ -1,4 +1,5 @@
-export type GarmentType = 'beanie' | 'scarf' | 'cowl' | 'pullover' | 'cardigan';
+
+export type GarmentType = 'beanie' | 'scarf' | 'cowl' | 'pullover' | 'cardigan' | 'swatch' | 'other';
 
 export type StitchType =
   | 'rib_1x1'
@@ -8,10 +9,14 @@ export type StitchType =
   | 'garter'
   | 'seed_stitch'
   | 'moss_stitch'
-  | 'brioche';
+  | 'brioche'
+  | 'fishermans_rib'
+  | 'cable'
+  | 'lace';
 
 export type ConstructionType =
   | 'in_the_round'
+  | 'top_down_round'
   | 'bottom_up_flat'
   | 'top_down_raglan'
   | 'drop_shoulder';
@@ -28,8 +33,21 @@ export interface StripeDefinition {
   colorName: string;
   hex: string;
   widthStsEstimate: number;
+  /** Height in rows, for horizontal stripes. */
+  heightRowsEstimate?: number;
   role: 'base' | 'stripe' | 'accent';
 }
+
+export type ColorworkType =
+  | 'solid'
+  | 'vertical_stripes'
+  | 'horizontal_stripes'
+  | 'color_block'
+  | 'stranded_motif'
+  | 'variegated';
+
+/** Who or what made the original, because machine-only fabrics need a hand-knit equivalent. */
+export type MadeBy = 'hand' | 'machine' | 'unknown';
 
 export interface KnitBlueprint {
   garmentType: GarmentType;
@@ -39,16 +57,20 @@ export interface KnitBlueprint {
   mainStitch: StitchType;
   secondaryStitch?: StitchType;
   hasFoldedBrim?: boolean;
-  brimHeightRatio?: number; // e.g., 0.3
-  crownWedges?: number; // e.g. 4 or 6 for beanie
-  colorworkType: 'solid' | 'vertical_stripes' | 'horizontal_stripes' | 'color_block';
+  brimHeightRatio?: number;
+  crownWedges?: number;
+  colorworkType: ColorworkType;
   stripes?: StripeDefinition[];
   features: string[];
   suggestedYarnWeight: YarnWeightCategory;
   suggestedNeedleMm: number;
   difficulty: 'Beginner' | 'Advanced Beginner' | 'Intermediate' | 'Advanced';
-  confidenceScore: number;
+  /** 0..1 from the decode, or null for a curated example that was never measured. */
+  confidenceScore: number | null;
+  madeBy?: MadeBy;
   visionNotes?: string;
+  /** Steps written by the AI for what the compiler cannot write. Not stitch-checked. */
+  aiSteps?: string[];
   isolatedImageUrl?: string;
   croppedImageUrl?: string;
   backgroundRatio?: number;
@@ -67,6 +89,28 @@ export interface KnitUserConstraints {
   language?: 'en' | 'es';
 }
 
+export type StitchOp =
+  | 'k'
+  | 'p'
+  | 'k1b'
+  | 'ssk'
+  | 'k2tog'
+  | 'ssp'
+  | 'p2tog'
+  | 'm1l'
+  | 'm1r'
+  | 'sl1wyif'
+  | 'sm'
+  | 'bo';
+
+export type RowSide = 'round' | 'RS' | 'WS';
+
+/** One row as worked, in working order. This is what the simulator checks. */
+export interface WorkedRow {
+  side: RowSide;
+  ops: StitchOp[];
+}
+
 export interface PatternRowInstruction {
   stepNumber: number;
   sectionName: string;
@@ -74,7 +118,22 @@ export interface PatternRowInstruction {
   number: number;
   instruction: string;
   stitchCountAfter: number;
+  /** Number of rows or rounds this step takes when you work through it. */
   repeatCount?: number;
+  /** Rows in working order, cycled over `repeatCount`. Absent on preparation steps. */
+  rows?: WorkedRow[];
+  /** Line per cycled row, shown one at a time by the row counter. */
+  rowTexts?: string[];
+  /** Right-side, wrong-side, or round: which face you are looking at. */
+  side?: RowSide;
+  /** Preparation and finishing steps are read, not counted. */
+  kind?: 'prep' | 'work' | 'finish';
+  /** Technique ids this step uses, for the "how do I do this" help. */
+  techniques?: string[];
+  /** Measure or count to confirm before moving on. */
+  checkpoint?: string;
+  /** Colour to use on this step, for horizontal stripes. */
+  colorNote?: string;
 }
 
 export interface PatternSection {
@@ -89,7 +148,7 @@ export interface PatternSection {
 export interface ChartCell {
   row: number;
   col: number;
-  stitchType: 'K' | 'P' | 'k2tog' | 'ssk' | 'sl1' | 'yo' | 'no_stitch';
+  stitchType: 'K' | 'P' | 'k1b' | 'k2tog' | 'ssk' | 'p2tog' | 'ssp' | 'm1l' | 'm1r' | 'sl1' | 'yo' | 'no_stitch';
   colorHex?: string;
   symbol: string;
   name: string;
@@ -101,6 +160,8 @@ export interface ChartGrid {
   cells: ChartCell[][];
   rowLabels: number[];
   legend: { symbol: string; name: string; description: string; color?: string }[];
+  /** How to read this chart for the way the piece is worked. */
+  readingNote?: string;
 }
 
 export interface YarnEstimate {
@@ -113,6 +174,11 @@ export interface YarnEstimate {
     grams: number;
     percentage: number;
   }[];
+}
+
+export interface PatternWarning {
+  severity: 'info' | 'caution';
+  message: string;
 }
 
 export interface CompiledPattern {
@@ -137,7 +203,16 @@ export interface CompiledPattern {
   sections: PatternSection[];
   chartData: ChartGrid;
   allRows: PatternRowInstruction[];
+  /** Plain-language description of how the piece is built, read before starting. */
+  howItsMade: string[];
+  warnings: PatternWarning[];
   compiledAt: string;
+}
+
+export interface TrackerPosition {
+  stepIndex: number;
+  /** Rows finished inside the current step. */
+  rowInStep: number;
 }
 
 export interface SavedProject {
@@ -147,9 +222,9 @@ export interface SavedProject {
   pattern: CompiledPattern;
   currentStepIndex: number;
   completedSteps: Record<number, boolean>;
+  tracker?: TrackerPosition;
   notes: string;
   savedAt: string;
   updatedAt: string;
   imageThumbnail?: string;
 }
-

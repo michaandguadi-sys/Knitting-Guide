@@ -16,13 +16,14 @@ import {
   FlaskConical,
 } from 'lucide-react';
 import { KnitUserConstraints } from '../types/knit';
+import { checkClaudeKey } from '../decode/claude';
+import { checkGeminiKey } from '../decode/gemini';
 import { Language } from '../i18n/translations';
 import {
+  AiProviderId,
   getStoredApiKey,
-  setStoredApiKey,
   isApiKeyVerified,
-  verifyGeminiApiKey,
-  KeyVerificationResult,
+  setStoredApiKey,
 } from '../utils/aiAnalyzer';
 
 interface SettingsViewProps {
@@ -43,23 +44,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onResetAll,
 }) => {
   const isEs = lang === 'es';
-  const [apiKey, setApiKey] = useState(getStoredApiKey());
+  const [provider, setProvider] = useState<AiProviderId>('claude');
+  const [apiKey, setApiKey] = useState(getStoredApiKey(provider));
   const [showKey, setShowKey] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<KeyVerificationResult | null>(() => {
-    if (getStoredApiKey() && isApiKeyVerified()) {
+  const [verificationResult, setVerificationResult] = useState<{ valid: boolean; message: string; model?: string; latencyMs?: number } | null>(() => {
+    if (getStoredApiKey(provider) && isApiKeyVerified(provider)) {
       return {
         valid: true,
-        message: '✓ Clave guardada y verificada anteriormente con Google Gemini 2.5 Flash.',
-        model: 'gemini-2.5-flash',
+        message: isEs ? '✓ Clave guardada y verificada anteriormente.' : '✓ Key saved and verified earlier.',
       };
     }
     return null;
   });
 
+  const chooseProvider = (next: AiProviderId) => {
+    setProvider(next);
+    setApiKey(getStoredApiKey(next));
+    setShowKey(false);
+    setVerificationResult(
+      getStoredApiKey(next) && isApiKeyVerified(next)
+        ? { valid: true, message: isEs ? '✓ Clave guardada y verificada anteriormente.' : '✓ Key saved and verified earlier.' }
+        : null
+    );
+  };
+
   const handleVerifyAndSave = async () => {
     if (!apiKey.trim()) {
-      setStoredApiKey('');
+      setStoredApiKey(provider, '');
       setVerificationResult({
         valid: false,
         message: isEs ? 'Ingresá una clave antes de verificar.' : 'Please enter an API key to test.',
@@ -71,8 +83,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setVerificationResult(null);
 
     try {
-      const result = await verifyGeminiApiKey(apiKey.trim());
-      setVerificationResult(result);
+      const key = apiKey.trim();
+      const started = Date.now();
+      const result = await (provider === 'claude' ? checkClaudeKey(key) : checkGeminiKey(key));
+      setStoredApiKey(provider, key, result.valid);
+      setVerificationResult(
+        result.valid
+          ? {
+              valid: true,
+              message: isEs ? `✓ Clave verificada. Se va a usar ${result.model}.` : `✓ Key verified. ${result.model} will be used.`,
+              model: result.model,
+              latencyMs: Date.now() - started,
+            }
+          : {
+              valid: false,
+              message: isEs ? `El servicio no aceptó la clave: ${result.detail}` : `The service did not accept the key: ${result.detail}`,
+            }
+      );
     } catch (err: any) {
       setVerificationResult({
         valid: false,
@@ -85,7 +112,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleClearApiKey = () => {
     setApiKey('');
-    setStoredApiKey('');
+    setStoredApiKey(provider, '');
     setVerificationResult(null);
   };
 
@@ -150,13 +177,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Google Gemini AI Key with Active Verification */}
+      {/* 2. AI service and key, verified live */}
       <div className="bg-[#FAF8F5] p-4 sm:p-5 rounded-2xl border border-[#E8E3DC] space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Key className="w-4 h-4 text-[#2D5A43]" />
             <h3 className="text-sm font-bold text-[#1F2421]">
-              {isEs ? 'Clave de Google Gemini y Verificación' : 'Google Gemini API Key & Verification'}
+              {isEs ? 'IA para leer las fotos' : 'AI that reads your photos'}
             </h3>
           </div>
 
@@ -178,10 +205,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           )}
         </div>
 
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={isEs ? 'Clave a editar' : 'Key to edit'}>
+          {([
+            ['claude', 'Claude', isEs ? 'La IA principal. De pago, unos 10 centavos de dólar por análisis' : 'The main AI. Paid, about 10 US cents per decode'],
+            ['gemini', 'Gemini', isEs ? 'Opcional. Solo entra en acción si falla Claude' : 'Optional. Only steps in if Claude fails'],
+          ] as const).map(([id, name, note]) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={provider === id}
+              onClick={() => chooseProvider(id)}
+              className={`p-3 rounded-2xl border text-left cursor-pointer min-h-[44px] ${
+                provider === id ? 'bg-[#EBF2EE] border-[#2D5A43] ring-1 ring-[#2D5A43]' : 'bg-white border-[#DDD7CD]'
+              }`}
+            >
+              <div className="font-bold text-xs sm:text-sm text-[#1F2421]">{name}</div>
+              <div className="text-[11px] leading-snug text-[#6F756F]">{note}</div>
+            </button>
+          ))}
+        </div>
+
         <p className="text-xs text-[#6F756F] leading-relaxed">
           {isEs
-            ? 'Para verificar que tu clave de Gemini realmente funciona, ingresala abajo y tocá "Verificar y Guardar". Haremos una llamada de prueba directa a Google AI Studio para confirmar que tu cuota y permisos están activos.'
-            : 'To verify your Gemini key is working, enter it below and tap "Verify & Save". We will make a live ping call to Google AI Studio to confirm your quota and permissions.'}
+            ? 'Con una clave, la IA mira tus fotos y las compara con las mediciones. Tus fotos se envían a ese servicio para analizarlas. Sin clave, nada sale de tu teléfono.'
+            : 'With a key, the AI looks at your photos and checks them against the measurements. Your photos are sent to that service for analysis. Without a key, nothing leaves your phone.'}
         </p>
 
         {/* Input box */}
@@ -189,7 +237,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="relative">
             <input
               type={showKey ? 'text' : 'password'}
-              placeholder="AIzaSy..."
+              placeholder={provider === 'claude' ? 'sk-ant-...' : 'AIzaSy...'}
               value={apiKey}
               onChange={(e) => {
                 setApiKey(e.target.value);
@@ -218,7 +266,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {isVerifying ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>{isEs ? 'Verificando con Google...' : 'Testing with Google...'}</span>
+                  <span>{isEs ? 'Verificando la clave...' : 'Testing the key...'}</span>
                 </>
               ) : (
                 <>
@@ -276,18 +324,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="pt-1 text-[11px] text-[#6F756F] space-y-1">
           <div>
             🔒 {isEs
-              ? 'Tu clave se almacena de forma 100% privada en tu dispositivo y nunca pasa por un servidor externo.'
-              : 'Your key is saved 100% privately in your browser and never touches an external server.'}
+              ? 'Tu clave queda guardada solo en este navegador y se envía únicamente al servicio que elegiste. Cualquiera con acceso a este dispositivo podría verla.'
+              : 'Your key is stored only in this browser and is sent only to the service you chose. Anyone with access to this device could read it.'}
           </div>
           <div>
-            {isEs ? '¿No tenés una clave de Gemini? Creá una gratis en ' : 'Need a Gemini key? Create one for free at '}
+            {provider === 'claude'
+              ? (isEs ? '¿No tenés una clave de Claude? Creala en ' : 'Need a Claude key? Create one at ')
+              : (isEs ? '¿No tenés una clave de Gemini? Creá una en ' : 'Need a Gemini key? Create one at ')}
             <a
-              href="https://aistudio.google.com/apikey"
+              href={provider === 'claude' ? 'https://platform.claude.com/settings/keys' : 'https://aistudio.google.com/apikey'}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[#2D5A43] font-bold underline"
             >
-              Google AI Studio
+              {provider === 'claude' ? 'Claude Console' : 'Google AI Studio'}
             </a>
           </div>
         </div>
