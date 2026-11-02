@@ -1,40 +1,52 @@
 import { KnitBlueprint } from '../types/knit';
 
-const API_KEY_STORAGE_KEY = 'knitvision_gemini_api_key';
-const API_KEY_VERIFIED_KEY = 'knitvision_gemini_api_key_verified';
+export type AiProviderId = 'claude' | 'gemini';
 
-export function getStoredApiKey(): string {
+const KEY_STORAGE: Record<AiProviderId, { key: string; verified: string }> = {
+  gemini: { key: 'knitvision_gemini_api_key', verified: 'knitvision_gemini_api_key_verified' },
+  claude: { key: 'knitvision_claude_api_key', verified: 'knitvision_claude_api_key_verified' },
+};
+export function getStoredApiKey(provider: AiProviderId): string {
   try {
-    return localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+    return localStorage.getItem(KEY_STORAGE[provider].key) || '';
   } catch {
     return '';
   }
 }
 
-export function isApiKeyVerified(): boolean {
+export function isApiKeyVerified(provider: AiProviderId): boolean {
   try {
-    return localStorage.getItem(API_KEY_VERIFIED_KEY) === 'true';
+    return localStorage.getItem(KEY_STORAGE[provider].verified) === 'true';
   } catch {
     return false;
   }
 }
 
-export function setStoredApiKey(key: string, verified = false): void {
+export function setStoredApiKey(provider: AiProviderId, key: string, verified = false): void {
+  const slot = KEY_STORAGE[provider];
   try {
     if (!key) {
-      localStorage.removeItem(API_KEY_STORAGE_KEY);
-      localStorage.removeItem(API_KEY_VERIFIED_KEY);
+      localStorage.removeItem(slot.key);
+      localStorage.removeItem(slot.verified);
     } else {
-      localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+      localStorage.setItem(slot.key, key.trim());
       if (verified) {
-        localStorage.setItem(API_KEY_VERIFIED_KEY, 'true');
+        localStorage.setItem(slot.verified, 'true');
       } else {
-        localStorage.removeItem(API_KEY_VERIFIED_KEY);
+        localStorage.removeItem(slot.verified);
       }
     }
   } catch (e) {
     console.error('Failed to save API key:', e);
   }
+}
+
+/** Claude reads the pictures. Gemini, if it has a key, only steps in when Claude fails. */
+export function getAiServices(): { provider: AiProviderId; apiKey: string }[] {
+  return (['claude', 'gemini'] as const).flatMap((provider) => {
+    const apiKey = getStoredApiKey(provider);
+    return apiKey ? [{ provider, apiKey }] : [];
+  });
 }
 
 export const EXAMPLE_IMAGE_URL = './assets/aistudio/IMG_0240_e50ab8f0.jpg';

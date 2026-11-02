@@ -4,16 +4,18 @@ Reads a photo of a knitted piece, works out what it is and how it was made, and 
 
 ---
 
-## How it reads a photo
+## How it reads a picture
 
-1. **Clean.** Checks the photo first (size, sharpness, exposure, glare, colour cast) and says how to retake it. Removes the surface behind the piece. A close-up keeps all of its fabric.
+One picture is enough, including a saved one from Pinterest. You don't need the piece itself. You can analyse all of it, or tap just one part such as a collar or a cable.
+
+1. **Clean.** Checks the picture (size, sharpness, exposure, glare, colour cast) and removes the surface behind the piece.
 2. **Reveal.** Evens out the light and builds a grey *stitch map* where the stitch structure shows whatever the yarn colour.
-3. **Measure.** Finds the stitch and row size, the texture (columns, ridges, Vs, bumps), the yarn colours and how they are laid out, separately for the top, middle and bottom of the piece.
-4. **Identify.** With a Gemini key, the AI first writes down only what it can see, then reasons from that record using knitters' rules. Results are checked against the measurements, and disagreements are flagged.
+3. **Measure.** Finds the stitch and row size, the texture (columns, ridges, Vs, bumps), the yarn colours and how they are laid out.
+4. **Identify.** Claude first writes down only what it can see, then reasons from that record using knitters' rules. Results are checked against the measurements, and disagreements are flagged.
 5. **How it was made.** Round or flat, bottom-up or top-down, folded brim, crown wedges, hand or machine. Each result shows its evidence and how sure the app is.
-6. **Ask.** Anything uncertain becomes a plain question about the real piece. Your answer always wins.
+6. **Ask and correct.** Anything uncertain becomes a plain question, and "I only have the picture" keeps the most likely answer. If something looks wrong, write a note or tap the spot on the picture, and Claude looks again. A claim that the picture clearly contradicts gets a reasoned reply, not blind agreement.
 
-Nothing is invented. Without a key the app says it only has measurements and stays below the "sure" line, because measurements alone misread some real fabric (see below). If the AI call fails, the app tells you why.
+Nothing is invented. Without a key the app says it only has measurements and asks more. If the AI call fails, the app tells you why.
 
 ## How the pattern is written
 
@@ -22,7 +24,7 @@ Every row is generated stitch by stitch, so the written text, the chart and the 
 - **Worked in the round or flat.** Wrong-side rows are the true mirror of the right side, so garter in the round alternates knit and purl rounds, while flat garter is knit every row.
 - **Hats** bottom-up or top-down, in the round or flat with a seam. **Cowls** and **scarves** in their own shapes. A stitch that curls gets a border.
 - **Sweaters and cardigans** are decoded, but only a test swatch is written. The app says so instead of passing off a hat as a sweater.
-- **Cables, lace and motifs** are recognised by the AI, but written as size and shape only, with a warning.
+- **Cables, lace, motifs, sweaters and selected parts** also get steps written by the AI from the picture. These are clearly marked: they have not been through the stitch check, and numbers can be estimates.
 - **A swatch comes first**, and a measured width turns the stitch count in the photo into a real gauge.
 - **The row counter** counts every real round, shows which side faces you, and saves every tap.
 
@@ -40,11 +42,24 @@ To score the stitch reading on your own labelled photos, name them like `garter_
 npm run bench:real -- path/to/photos
 ```
 
-On 14 labelled photos from Wikimedia Commons, measurements alone were right on 6, said "unsure" on 4, and were wrong on 4: three cables, where the reading describes the fabric around the cable, and one fuzzy pair of mitts. That is why a measured result is never treated as certain and the app asks you to confirm it. Accuracy with the AI step has not been measured yet.
+To compare the AI services on labelled photos, which spends money on your keys:
+
+```bash
+npm run bench:ai -- path/to/photos
+```
+
+Results on 14 labelled photos from Wikimedia Commons, one picture each:
+
+| Reader | Right | Unsure | Wrong and sure |
+|---|---|---|---|
+| Measurements only | 6 | 4 | 4 |
+| Claude Opus 5.5 | 13 | 1 (wrong, flagged as unsure) | 0 |
+
+A hat counts as right when its body or its brim matches the label. The prompts were adjusted after a first run on these same photos, so these numbers may be somewhat optimistic for new pictures. The set is small and is not a statistical accuracy figure. Five of these pictures were also read correctly at 474 px wide, the size of a small Pinterest pin. A decode costs about 10 US cents and takes about 40 seconds.
 
 ## Privacy
 
-Without a key nothing leaves the phone. With a key, photos go to Google for analysis. The key is stored only in this browser and is sent in a request header, never in a URL.
+Without a key nothing leaves the phone. With a key, photos go to the AI service you chose for analysis. The key is stored only in this browser and is sent in a request header, never in a URL.
 
 ---
 

@@ -150,6 +150,12 @@ test('sweaters get an honest swatch and a warning, never a hat', () => {
   assert.match(p.warnings[0].message, /cannot write a full/);
 });
 
+test('a cable swatch is named for the cable, not its plain base', () => {
+  const p = compilePattern(blueprint({ garmentType: 'swatch', mainStitch: 'cable' }), constraints());
+  assert.match(p.title, /cables/i);
+  assert.equal(p.warnings[0].severity, 'caution');
+});
+
 test('stockinette scarf gets a garter frame so that it does not curl', () => {
   const p = compileScarfPattern(blueprint({ garmentType: 'scarf', mainStitch: 'stockinette' }), constraints({ circumferenceCm: 24, lengthCm: 170 }));
   const body = p.sections.find((s) => s.id === 'full-scarf')!.instructions.filter((i) => i.kind === 'work');

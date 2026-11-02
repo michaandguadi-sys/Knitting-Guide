@@ -3,8 +3,8 @@ import { ColorworkType, GarmentType, KnitBlueprint, StitchType, StripeDefinition
 import { ColorLayout } from '../vision/colors';
 import { FabricReading } from '../vision/pipeline';
 import { TextureFamily } from '../vision/texture';
-import { Deduction } from './gemini';
-import { Decoded, DecodeQuestion, Finding, PhotoSlot, constructionFrom } from './types';
+import { Deduction } from './analysis';
+import { CANT_TELL, Decoded, DecodeQuestion, Finding, PhotoSlot, constructionFrom } from './types';
 
 type Lang = 'en' | 'es';
 const tr = (lang: Lang) => (en: string, es: string) => (lang === 'es' ? es : en);
@@ -246,7 +246,83 @@ export function reconcile(
     features: ai?.features ?? [],
     title: ai?.title ?? '',
     notes,
+    reply: ai?.reply_to_knitter ?? '',
+    nextPhoto:
+      ai && ai.best_next_photo !== 'none' ? { slot: ai.best_next_photo, reason: ai.best_next_photo_reason } : null,
+    howTo: ai?.how_to_steps ?? [],
   };
+}
+
+const SETTLED_FIELDS = ['garment', 'stitch', 'edgeStitch', 'method', 'direction', 'foldedBrim', 'crownWedges', 'colorwork', 'madeBy', 'yarnWeight', 'needleMm'] as const;
+
+/** What the knitter has settled, in the words the AI is told. */
+export function knownFacts(decoded: Decoded): string[] {
+  const names: Record<(typeof SETTLED_FIELDS)[number], string> = {
+    garment: 'The piece is',
+    stitch: 'The main stitch is',
+    edgeStitch: 'The brim or edge stitch is',
+    method: 'It was worked',
+    direction: 'It was worked in the direction',
+    foldedBrim: 'Folded brim',
+    crownWedges: 'Crown wedges',
+    colorwork: 'The colour layout is',
+    madeBy: 'It was made by',
+    yarnWeight: 'The yarn weight is',
+    needleMm: 'The needle in mm is',
+  };
+  return SETTLED_FIELDS.flatMap((field) => {
+    const finding = decoded[field] as Finding<unknown>;
+    return finding.source === 'you' ? [`${names[field]}: ${String(finding.value)}`] : [];
+  });
+}
+
+/** A new AI reading can never overrule an answer the knitter gave about the real piece. */
+export function keepYourAnswers(previous: Decoded, next: Decoded): Decoded {
+  const merged: Decoded = { ...next };
+  for (const field of SETTLED_FIELDS) {
+    const old = previous[field] as Finding<unknown>;
+    if (old.source === 'you') (merged as unknown as Record<string, unknown>)[field] = old;
+  }
+  return merged;
+}
+
+export interface DecodedChange {
+  field: string;
+  from: string;
+  to: string;
+}
+
+/** Plain list of what a correction changed, so that the knitter can see the effect. */
+export function describeChanges(previous: Decoded, next: Decoded, lang: Lang): DecodedChange[] {
+  const t = tr(lang);
+  const stitch = (v: unknown) => (v === 'same' ? t('same as main', 'igual al principal') : stitchWord(v as StitchType, lang));
+  const garments: Record<GarmentType, string> = {
+    beanie: t('Hat', 'Gorro'),
+    scarf: t('Scarf', 'Bufanda'),
+    cowl: t('Cowl', 'Cuello'),
+    pullover: t('Sweater', 'Pulóver'),
+    cardigan: t('Cardigan', 'Saco'),
+    swatch: t('Just fabric', 'Solo tejido'),
+    other: t('Something else', 'Otra cosa'),
+  };
+  const methods: Record<string, string> = { round: t('In the round', 'En redondo'), flat: t('Flat', 'Plano'), unknown: t('Unknown', 'Sin saber') };
+  const directions: Record<string, string> = {
+    bottom_up: t('From the brim up', 'Desde el puño'),
+    top_down: t('From the top down', 'Desde la punta'),
+    side_to_side: t('Side to side', 'De lado a lado'),
+    unknown: t('Unknown', 'Sin saber'),
+  };
+  const yesNo = (v: unknown) => (v ? t('Yes', 'Sí') : t('No', 'No'));
+  const rows: [string, unknown, unknown, (v: unknown) => string][] = [
+    [t('Piece', 'Prenda'), previous.garment.value, next.garment.value, (v) => garments[v as GarmentType]],
+    [t('Main stitch', 'Punto principal'), previous.stitch.value, next.stitch.value, stitch],
+    [t('Brim or edge stitch', 'Punto del puño o borde'), previous.edgeStitch.value, next.edgeStitch.value, stitch],
+    [t('Method', 'Método'), previous.method.value, next.method.value, (v) => methods[v as string]],
+    [t('Direction', 'Dirección'), previous.direction.value, next.direction.value, (v) => directions[v as string]],
+    [t('Folded brim', 'Puño doblado'), previous.foldedBrim.value, next.foldedBrim.value, yesNo],
+    [t('Crown wedges', 'Gajos'), previous.crownWedges.value, next.crownWedges.value, (v) => (v === null ? '-' : String(v))],
+  ];
+  return rows.flatMap(([field, from, to, show]) => (from === to ? [] : [{ field, from: show(from), to: show(to) }]));
 }
 
 /** Stitch names with what to look for, in the words a knitter would use at the table. */
@@ -272,6 +348,11 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
   const t = tr(lang);
   const out: DecodeQuestion[] = [];
   const open = <T,>(f: Finding<T>) => f.source !== 'you' && f.confidence < CONFIRM_BELOW;
+  const cantTell = {
+    value: CANT_TELL,
+    label: t('I only have the picture: use the best guess', 'Solo tengo la foto: usá lo más probable'),
+    hint: '',
+  };
 
   if (open(decoded.garment)) {
     const garments: [GarmentType, string][] = [
@@ -286,7 +367,7 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
       field: 'garment',
       prompt: t('What is this piece?', '¿Qué es esta prenda?'),
       why: t('The steps depend on it.', 'Los pasos dependen de esto.'),
-      options: garments.map(([value, label]) => ({ value, label, hint: '' })),
+      options: [...garments.map(([value, label]) => ({ value, label, hint: '' })), cantTell],
     });
   }
   if (open(decoded.stitch)) {
@@ -296,8 +377,8 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
     out.push({
       field: 'stitch',
       prompt: t('Which of these matches the fabric?', '¿Cuál de estos se parece al tejido?'),
-      why: t('This is the hardest thing to read from a photo, and every row depends on it. Look at the piece itself if you have it.', 'Es lo más difícil de leer en una foto, y de esto depende cada vuelta. Mirá la prenda si la tenés.'),
-      options: ordered.map((value) => ({ value, label: stitchWord(value, lang), hint: stitchHint(value, lang) })),
+      why: t('This is the hardest thing to read from a photo, and every row depends on it. Compare with the picture, or with the piece if you have it.', 'Es lo más difícil de leer en una foto, y de esto depende cada vuelta. Comparalo con la foto, o con la prenda si la tenés.'),
+      options: [...ordered.map((value) => ({ value, label: stitchWord(value, lang), hint: stitchHint(value, lang) })), cantTell],
     });
   }
   if (open(decoded.method) && methodMatters(decoded.garment.value)) {
@@ -308,6 +389,7 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
       options: [
         { value: 'round', label: t('No seam: in the round', 'Sin costura: en redondo'), hint: t('The fabric goes all the way around without a join.', 'El tejido da toda la vuelta sin unión.') },
         { value: 'flat', label: t('Has a seam: flat', 'Con costura: plano'), hint: t('A vertical line where two edges were sewn.', 'Una línea vertical donde se cosieron dos bordes.') },
+        cantTell,
       ],
     });
   }
@@ -319,6 +401,7 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
       options: [
         { value: 'bottom_up', label: t('Gathered: started at the brim', 'Fruncida: empezó en el puño'), hint: t('Stitches pulled together with a small pucker.', 'Puntos juntados con un pequeño frunce.') },
         { value: 'top_down', label: t('Smooth circle: started at the top', 'Círculo liso: empezó en la punta'), hint: t('A neat start with lines growing outward.', 'Un inicio prolijo con líneas que crecen hacia afuera.') },
+        cantTell,
       ],
     });
   }
@@ -330,6 +413,7 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
       options: [
         { value: 'true', label: t('Yes, double thickness', 'Sí, doble grosor'), hint: '' },
         { value: 'false', label: t('No, single layer', 'No, una sola capa'), hint: '' },
+        cantTell,
       ],
     });
   }
@@ -338,6 +422,11 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
 
 /** Applies a knitter's answer. Their eyes on the real piece outrank any model or measurement. */
 export function applyAnswer(decoded: Decoded, field: DecodeQuestion['field'], value: string): Decoded {
+  if (value === CANT_TELL) {
+    // With only a picture this cannot be checked, so the most likely answer stands.
+    const current = decoded[field] as Finding<unknown>;
+    return { ...decoded, [field]: { ...current, confidence: Math.max(current.confidence, CONFIRM_BELOW) } };
+  }
   const you = <T,>(v: T): Finding<T> => ({ value: v, confidence: 1, source: 'you', evidence: '' });
   switch (field) {
     case 'stitch':
@@ -363,17 +452,16 @@ export function methodMatters(garment: GarmentType): boolean {
 }
 
 export function overallConfidence(decoded: Decoded): number {
-  const critical = [decoded.stitch.confidence, decoded.garment.confidence];
-  if (methodMatters(decoded.garment.value)) critical.push(decoded.method.confidence);
-  return Math.min(...critical);
+  return Math.min(decoded.stitch.confidence, decoded.garment.confidence);
 }
 
 export function isReadyToCompile(decoded: Decoded): boolean {
+  // How the original was worked is often invisible in a picture and either way gives the same look,
+  // so it is asked about but never holds the pattern back.
   return (
     decoded.inputKind.value !== 'crochet' &&
     decoded.stitch.confidence >= CONFIRM_BELOW &&
-    decoded.garment.confidence >= CONFIRM_BELOW &&
-    (!methodMatters(decoded.garment.value) || decoded.method.confidence >= CONFIRM_BELOW)
+    decoded.garment.confidence >= CONFIRM_BELOW
   );
 }
 
@@ -451,6 +539,13 @@ export function toBlueprint(decoded: Decoded, reading: FabricReading | null, lan
     confidenceScore: overallConfidence(decoded),
     madeBy: decoded.madeBy.value,
     visionNotes: decoded.notes.join(' '),
+    // Where the compiler can write every row, its checked steps are the ones to follow.
+    aiSteps:
+      !STITCHES[decoded.stitch.value].compilable ||
+      !['beanie', 'scarf', 'cowl'].includes(decoded.garment.value) ||
+      decoded.colorwork.value === 'stranded_motif'
+        ? decoded.howTo
+        : undefined,
   };
 }
 
@@ -482,5 +577,8 @@ export function manualDecoded(lang: Lang): Decoded {
     features: [],
     title: t('My piece', 'Mi prenda'),
     notes: [],
+    reply: '',
+    nextPhoto: null,
+    howTo: [],
   };
 }

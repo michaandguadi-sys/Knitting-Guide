@@ -1,6 +1,7 @@
 import { ColorworkType, ConstructionType, GarmentType, MadeBy, StitchType, YarnWeightCategory } from '../types/knit';
 import { FabricReading } from '../vision/pipeline';
 import { Raster } from '../vision/raster';
+import type { Deduction, Observation } from './analysis';
 
 export type PhotoSlot = 'front' | 'closeup' | 'inside' | 'top' | 'edge';
 
@@ -44,7 +45,31 @@ export interface Decoded {
   features: string[];
   title: string;
   notes: string[];
+  /** Direct answer to the knitter's latest correction. */
+  reply: string;
+  /** The one extra photo the AI would most like to see. */
+  nextPhoto: { slot: Exclude<PhotoSlot, 'front'>; reason: string } | null;
+  /** The AI's written steps. Useful where the compiler cannot write row by row. Not stitch-checked. */
+  howTo: string[];
 }
+
+/** The one part of the picture the knitter wants to make, as fractions of the picture. */
+export interface PhotoFocus {
+  x: number;
+  y: number;
+  /** Width of the selected square as a share of the picture's shorter side. */
+  size: number;
+}
+
+/** A spot the knitter tapped on the photo, as fractions of its width and height. */
+export interface PhotoMark {
+  x: number;
+  y: number;
+  note: string;
+}
+
+/** Answer meaning "I cannot tell from my picture": the best guess is kept and not asked again. */
+export const CANT_TELL = '__cant_tell';
 
 export type QuestionField = 'stitch' | 'method' | 'direction' | 'foldedBrim' | 'garment' | 'madeBy' | 'crownWedges';
 
@@ -63,9 +88,9 @@ export interface DecodeQuestion {
 }
 
 export type AiStatus =
-  | { state: 'used'; model: string; photosSent: number }
+  | { state: 'used'; provider: 'claude' | 'gemini'; model: string; photosSent: number }
   | { state: 'no_key' }
-  | { state: 'failed'; reason: AiFailure; detail: string };
+  | { state: 'failed'; provider: 'claude' | 'gemini'; reason: AiFailure; detail: string };
 
 export type AiFailure = 'bad_key' | 'quota' | 'network' | 'blocked' | 'invalid_response' | 'timeout' | 'no_model';
 
@@ -74,6 +99,11 @@ export interface DecodeReport {
   decoded: Decoded;
   questions: DecodeQuestion[];
   ai: AiStatus;
+  /** The AI's latest reading, the starting point when the knitter corrects it. */
+  aiDeduction: Deduction | null;
+  aiObservation: Observation | null;
+  /** The whole picture, kept when only a part of it was analysed. */
+  context: Raster | null;
   /** Lowest-trust critical conclusion, 0..1. Answers raise it. */
   overallConfidence: number;
   /** True once stitch and method are known well enough to write a pattern without guessing. */

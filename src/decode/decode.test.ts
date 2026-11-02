@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeWithGemini, chooseModels, GeminiError, parseJsonLoose, validateDeduction, AiImage, checkKey } from './gemini';
-import { decodePhotos } from './decodePhotos';
-import { applyAnswer, buildQuestions, CONFIRM_BELOW, gaugeFromWidth, isReadyToCompile, manualDecoded, toBlueprint, yarnFromGauge } from './reconcile';
+import { AiError, AiImage, parseJsonLoose, validateDeduction } from './analysis';
+import { analyzeWithGemini, checkGeminiKey, chooseModels, toGeminiSchema } from './gemini';
+import { CLAUDE_MODEL, analyzeWithClaude, checkClaudeKey, toClaudeSchema } from './claude';
+import { buildMarkImages, cropToFocus, decodePhotos, refineReport } from './decodePhotos';
+import { CANT_TELL } from './types';
+import { applyAnswer, buildQuestions, CONFIRM_BELOW, describeChanges, gaugeFromWidth, isReadyToCompile, keepYourAnswers, knownFacts, manualDecoded, toBlueprint, yarnFromGauge } from './reconcile';
 import { renderFabric } from '../vision/testing/synthFabric';
 import { compilePattern, verifyPattern } from '../engine/compiler';
 import { readFabric } from '../vision/pipeline';
@@ -102,9 +105,9 @@ test('a rejected key fails at once without retries', async () => {
     calls++;
     return json({ error: { message: 'API key not valid' } }, 400);
   }) as unknown as typeof fetch;
-  await assert.rejects(analyzeWithGemini(images, 'm', undefined, opts(impl)), (e: GeminiError) => e.reason === 'bad_key');
+  await assert.rejects(analyzeWithGemini(images, 'm', undefined, opts(impl)), (e: AiError) => e.reason === 'bad_key');
   assert.equal(calls, 1);
-  const check = await checkKey('nope', impl);
+  const check = await checkGeminiKey('nope', impl);
   assert.equal(check.valid, false);
 });
 
@@ -165,6 +168,114 @@ const photo = (stitch: Parameters<typeof renderFabric>[0]['stitch']) => {
 };
 const encodeJpeg = async () => 'AAAA';
 
+const claudeReply = (body: unknown, extra: Record<string, unknown> = {}) =>
+  json({
+    id: 'msg_1',
+    type: 'message',
+    role: 'assistant',
+    model: CLAUDE_MODEL,
+    stop_reason: 'end_turn',
+    stop_sequence: null,
+    content: [{ type: 'thinking', thinking: '', signature: 'x' }, { type: 'text', text: JSON.stringify(body) }],
+    usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 5, cache_creation_input_tokens: 100 },
+    ...extra,
+  });
+
+function claudeServer(responses: (() => Response)[]) {
+  const bodies: Record<string, any>[] = [];
+  const urls: string[] = [];
+  const impl = (async (url: string, init?: RequestInit) => {
+    urls.push(String(url));
+    if (init?.body) bodies.push(JSON.parse(String(init.body)));
+    const next = responses.shift();
+    if (!next) throw new Error('Unexpected call');
+    return next();
+  }) as unknown as typeof fetch;
+  return { impl, bodies, urls };
+}
+
+test('Claude: two steps, closed schema, cached images, right model and effort', async () => {
+  const { impl, bodies } = claudeServer([() => claudeReply(observation), () => claudeReply(goodDeduction)]);
+  const stages: string[] = [];
+  const result = await analyzeWithClaude(images, 'm', undefined, { apiKey: 'k', language: 'en', fetchImpl: impl, onStage: (s) => stages.push(s) });
+  assert.equal(result.provider, 'claude');
+  assert.equal(result.model, 'claude-opus-5-5');
+  assert.equal(result.deduction.main_stitch, 'rib_1x1');
+  assert.deepEqual(stages, ['observing', 'deducing']);
+  assert.equal(bodies.length, 2);
+  for (const body of bodies) {
+    assert.equal(body.model, 'claude-opus-5-5');
+    assert.equal(body.temperature, undefined);
+    assert.equal(body.output_config.effort, 'high');
+    assert.equal(body.output_config.format.type, 'json_schema');
+    assert.equal(body.output_config.format.schema.additionalProperties, false);
+    assert.equal(body.fallbacks, 'default');
+    assert.equal(body.messages[0].content[0].source.type, 'base64');
+  }
+  assert.ok(bodies[0].messages[0].content.at(-1).text.includes('Do not name stitches'));
+  assert.ok(bodies[1].messages[0].content.at(-1).text.includes('master hand-knitter'));
+  assert.deepEqual(result.usage, { inputTokens: 20, outputTokens: 40, cachedInputTokens: 0 });
+});
+
+test('Claude schema lists every field as required; Gemini schema uses its own dialect', () => {
+  const source = { type: 'object', properties: { a: { type: ['integer', 'null'] }, b: { type: 'array', items: { type: 'object', properties: { c: { type: 'string' } } } } }, required: ['a'] };
+  const claude = toClaudeSchema(source) as any;
+  assert.deepEqual(claude.required, ['a', 'b']);
+  assert.equal(claude.additionalProperties, false);
+  assert.deepEqual(claude.properties.a.type, ['integer', 'null']);
+  assert.equal(claude.properties.b.items.additionalProperties, false);
+  const gemini = toGeminiSchema(source) as any;
+  assert.equal(gemini.type, 'OBJECT');
+  assert.equal(gemini.properties.a.type, 'INTEGER');
+  assert.equal(gemini.properties.a.nullable, true);
+  assert.equal(gemini.properties.b.items.properties.c.type, 'STRING');
+});
+
+test('Claude errors become plain reasons, and a bad key is not retried', async () => {
+  const failing = (status: number, type: string) => {
+    let calls = 0;
+    const impl = (async () => {
+      calls++;
+      return json({ type: 'error', error: { type, message: type } }, status);
+    }) as unknown as typeof fetch;
+    return { impl, count: () => calls };
+  };
+  const bad = failing(401, 'authentication_error');
+  await assert.rejects(analyzeWithClaude(images, 'm', undefined, { apiKey: 'k', language: 'en', fetchImpl: bad.impl }), (e: AiError) => e.reason === 'bad_key');
+  assert.equal(bad.count(), 1);
+  const check = await checkClaudeKey('nope', failing(401, 'authentication_error').impl);
+  assert.equal(check.valid, false);
+  assert.equal(check.reason, 'bad_key');
+});
+
+test('Claude: a declined photo is reported, and a garbled answer is retried', async () => {
+  const declined = claudeServer([() => claudeReply({}, { stop_reason: 'refusal', stop_details: { type: 'refusal', category: null, explanation: 'no' }, content: [] })]);
+  await assert.rejects(analyzeWithClaude(images, 'm', undefined, { apiKey: 'k', language: 'en', fetchImpl: declined.impl }), (e: AiError) => e.reason === 'blocked');
+
+  const garbled = () => claudeReply({}, { content: [{ type: 'text', text: 'not json' }] });
+  const recovering = claudeServer([garbled, () => claudeReply(observation), () => claudeReply(goodDeduction)]);
+  const ok = await analyzeWithClaude(images, 'm', undefined, { apiKey: 'k', language: 'en', fetchImpl: recovering.impl });
+  assert.equal(ok.deduction.garment, 'beanie');
+});
+
+test('the second AI steps in when the first fails, and the report names the one used', async () => {
+  const impl = (async (url: string) => {
+    if (String(url).includes('anthropic')) return json({ type: 'error', error: { type: 'authentication_error', message: 'bad' } }, 401);
+    if (String(url).includes('/models?')) return modelList();
+    return impl.calls++ === 0 ? candidate(observation) : candidate(goodDeduction);
+  }) as unknown as typeof fetch & { calls: number };
+  impl.calls = 0;
+  const report = await decodePhotos([photo('rib_1x1')], {
+    language: 'en',
+    encodeJpeg,
+    ai: [{ provider: 'claude', apiKey: 'a' }, { provider: 'gemini', apiKey: 'b' }],
+    fetchImpl: impl,
+    sleep: async () => {},
+  });
+  assert.equal(report.ai.state, 'used');
+  assert.equal(report.ai.state === 'used' && report.ai.provider, 'gemini');
+});
+
 test('without a key the result admits it, stays under the confirm line and asks', async () => {
   const report = await decodePhotos([photo('rib_1x1')], { language: 'en', encodeJpeg });
   assert.equal(report.ai.state, 'no_key');
@@ -179,7 +290,7 @@ test('without a key the result admits it, stays under the confirm line and asks'
 
 test('a failed AI call is reported, and the photo is still measured', async () => {
   const impl = (async () => json({ error: { message: 'boom' } }, 500)) as unknown as typeof fetch;
-  const report = await decodePhotos([photo('garter')], { language: 'en', encodeJpeg, apiKey: 'k', fetchImpl: impl, sleep: async () => {} });
+  const report = await decodePhotos([photo('garter')], { language: 'en', encodeJpeg, ai: [{ provider: 'gemini', apiKey: 'k' }], fetchImpl: impl, sleep: async () => {} });
   assert.equal(report.ai.state, 'failed');
   assert.equal(report.decoded.stitch.value, 'garter');
   assert.equal(report.readyToCompile, false);
@@ -188,7 +299,7 @@ test('a failed AI call is reported, and the photo is still measured', async () =
 test('AI agreement with the measurements raises trust; a clash lowers it and flags it', async () => {
   const run = async (stitch: string) => {
     const { impl } = scripted([() => candidate(observation), () => candidate({ ...goodDeduction, main_stitch: stitch })]);
-    return decodePhotos([photo('garter')], { language: 'en', encodeJpeg, apiKey: 'k', fetchImpl: impl, sleep: async () => {} });
+    return decodePhotos([photo('garter')], { language: 'en', encodeJpeg, ai: [{ provider: 'gemini', apiKey: 'k' }], fetchImpl: impl, sleep: async () => {} });
   };
   const agree = await run('garter');
   const clash = await run('rib_1x1');
@@ -200,7 +311,7 @@ test('AI agreement with the measurements raises trust; a clash lowers it and fla
 
 test('crochet is refused rather than given a knitting pattern', async () => {
   const { impl } = scripted([() => candidate({ ...observation, input_kind: 'crochet' }), () => candidate({ ...goodDeduction, input_kind: 'crochet' })]);
-  const report = await decodePhotos([photo('seed')], { language: 'en', encodeJpeg, apiKey: 'k', fetchImpl: impl, sleep: async () => {} });
+  const report = await decodePhotos([photo('seed')], { language: 'en', encodeJpeg, ai: [{ provider: 'gemini', apiKey: 'k' }], fetchImpl: impl, sleep: async () => {} });
   assert.equal(report.decoded.inputKind.value, 'crochet');
   assert.equal(isReadyToCompile(report.decoded), false);
 });
@@ -260,4 +371,154 @@ test('a measured width turns stitches into a real gauge', () => {
   assert.ok(Math.abs(gauge.rowsPer10cm! - 17.8 * (20 / 15)) < 2);
   assert.equal(yarnFromGauge(gauge.stsPer10cm).weight, 'Worsted / Aran');
   assert.equal(gaugeFromWidth(reading, 0), null);
+});
+
+const decodeForRefine = async () => {
+  const { impl } = claudeServer([() => claudeReply(observation), () => claudeReply(goodDeduction)]);
+  return decodePhotos([{ slot: 'front', raster: renderFabric({ stitch: 'rib_1x1', width: 640, height: 640 }), originalLongSide: 1600 }], {
+    language: 'en',
+    encodeJpeg,
+    ai: [{ provider: 'claude', apiKey: 'k' }],
+    fetchImpl: impl,
+  });
+};
+
+test('a correction reaches the AI with the earlier reading, the marks and your confirmed facts', async () => {
+  const report = await decodeForRefine();
+  const decoded = applyAnswer(report.decoded, 'method', 'flat');
+  const { impl, bodies } = claudeServer([
+    () => claudeReply({ ...goodDeduction, main_stitch: 'fishermans_rib', method: 'round', reply_to_knitter: 'Changed to fisherman rib.' }),
+  ]);
+  const next = await refineReport(
+    report,
+    { note: 'It is much thicker than plain rib', marks: [{ x: 0.5, y: 0.8, note: 'look at the brim' }], decoded },
+    { language: 'en', encodeJpeg, ai: [{ provider: 'claude', apiKey: 'k' }], fetchImpl: impl }
+  );
+  const content = bodies[0].messages[0].content;
+  const prompt = content.at(-1).text;
+  assert.ok(prompt.includes('It is much thicker than plain rib'));
+  assert.ok(prompt.includes('Mark 1: look at the brim'));
+  assert.ok(prompt.includes('It was worked: flat'));
+  assert.ok(prompt.includes('"main_stitch": "rib_1x1"'), 'includes the earlier reading');
+  assert.ok(prompt.includes('Do not simply agree'));
+  assert.ok(prompt.includes('mark 1'), 'names the crop among the images');
+  assert.equal(content.filter((b: { type: string }) => b.type === 'image').length, content.length - 1);
+  assert.ok(content.length >= 4, 'whole photo, stitch map and the tapped crop at least');
+  assert.equal(next.decoded.stitch.value, 'fishermans_rib');
+  assert.equal(next.decoded.reply, 'Changed to fisherman rib.');
+  assert.equal(next.decoded.method.value, 'flat', 'your answer outranks the new reading');
+  assert.equal(next.decoded.method.source, 'you');
+  assert.deepEqual(describeChanges(decoded, next.decoded, 'en').map((c) => c.field), ['Main stitch']);
+});
+
+test('a failed correction leaves the reading alone and says so', async () => {
+  const report = await decodeForRefine();
+  const impl = (async () => json({ type: 'error', error: { type: 'authentication_error', message: 'bad' } }, 401)) as unknown as typeof fetch;
+  await assert.rejects(
+    refineReport(report, { note: 'x', marks: [], decoded: report.decoded }, { language: 'en', encodeJpeg, ai: [{ provider: 'claude', apiKey: 'k' }], fetchImpl: impl }),
+    (e: AiError) => e.reason === 'bad_key'
+  );
+  await assert.rejects(refineReport(report, { note: 'x', marks: [], decoded: report.decoded }, { language: 'en', encodeJpeg }));
+  assert.equal(report.decoded.stitch.value, 'rib_1x1');
+});
+
+test('marks crop around the tapped spot and stay inside the photo', async () => {
+  const reading = readFabric(renderFabric({ stitch: 'stockinette', width: 640, height: 640 }));
+  const sizes: [number, number][] = [];
+  const encode = async (raster: { width: number; height: number }) => {
+    sizes.push([raster.width, raster.height]);
+    return 'AAAA';
+  };
+  const images = await buildMarkImages(reading, [{ x: 0, y: 0, note: '' }, { x: 1, y: 1, note: '' }, { x: 0.5, y: 0.5, note: '' }], encode as never);
+  assert.equal(images.length, 3);
+  for (const [w, h] of sizes) {
+    assert.equal(w, h);
+    assert.ok(w >= 200 && w <= 800);
+  }
+});
+
+test('facts list only what you answered, and a new reading cannot overrule them', () => {
+  let mine = manualDecoded('en');
+  assert.deepEqual(knownFacts(mine).filter((f) => f.includes('stitch')), []);
+  mine = applyAnswer(mine, 'stitch', 'garter');
+  assert.ok(knownFacts(mine).includes('The main stitch is: garter'));
+  const ai = { ...manualDecoded('en'), stitch: { value: 'lace' as const, confidence: 0.9, source: 'ai' as const, evidence: '' } };
+  assert.equal(keepYourAnswers(mine, ai).stitch.value, 'garter');
+});
+
+test('the AI can ask for the photo that would help most', async () => {
+  const { impl } = claudeServer([
+    () => claudeReply(observation),
+    () => claudeReply({ ...goodDeduction, best_next_photo: 'inside', best_next_photo_reason: 'To see carried yarn.' }),
+  ]);
+  const report = await decodePhotos([photo('rib_1x1')], { language: 'en', encodeJpeg, ai: [{ provider: 'claude', apiKey: 'k' }], fetchImpl: impl });
+  assert.deepEqual(report.decoded.nextPhoto, { slot: 'inside', reason: 'To see carried yarn.' });
+  const none = validateDeduction({ main_stitch: 'garter', best_next_photo: 'nonsense' });
+  assert.equal(none.best_next_photo, 'none');
+});
+
+test('one picture is enough: every question can be answered with "I only have the picture"', async () => {
+  const report = await decodePhotos([{ slot: 'front', raster: renderFabric({ stitch: 'seed', width: 474, height: 474 }), originalLongSide: 474 }], { language: 'en', encodeJpeg });
+  assert.ok(report.questions.length > 0);
+  for (const q of report.questions) assert.ok(q.options.some((o) => o.value === CANT_TELL), q.field);
+  let d = report.decoded;
+  const before = d.stitch.value;
+  for (let round = 0; round < 6; round++) {
+    for (const q of buildQuestions(d, 'en')) d = applyAnswer(d, q.field, CANT_TELL);
+  }
+  assert.equal(buildQuestions(d, 'en').length, 0);
+  assert.equal(isReadyToCompile(d), true);
+  assert.equal(d.stitch.value, before, 'keeps the best guess');
+  assert.notEqual(d.stitch.source, 'you', 'never presented as if the knitter confirmed it');
+});
+
+test('how the piece was worked never holds the pattern back', () => {
+  let d = applyAnswer(manualDecoded('en'), 'garment', 'beanie');
+  d = applyAnswer(d, 'stitch', 'garter');
+  assert.ok(d.method.confidence < CONFIRM_BELOW);
+  assert.equal(isReadyToCompile(d), true);
+});
+
+test('selecting one part: only that part is read, the whole picture is context, and it knits as fabric', async () => {
+  // Left half is rib, right half garter: tapping the garter side must read garter.
+  const rib = renderFabric({ stitch: 'rib_1x1', width: 500, height: 900 });
+  const garter = renderFabric({ stitch: 'garter', width: 500, height: 900 });
+  const whole = { width: 1000, height: 900, data: new Uint8ClampedArray(1000 * 900 * 4) };
+  for (let y = 0; y < 900; y++) {
+    whole.data.set(rib.data.subarray(y * 500 * 4, (y + 1) * 500 * 4), y * 1000 * 4);
+    whole.data.set(garter.data.subarray(y * 500 * 4, (y + 1) * 500 * 4), (y * 1000 + 500) * 4);
+  }
+  const focus = { x: 0.75, y: 0.5, size: 0.45 };
+  const part = cropToFocus(whole, focus);
+  assert.equal(part.width, 405);
+  const { impl, bodies } = claudeServer([
+    () => claudeReply(observation),
+    () => claudeReply({ ...goodDeduction, main_stitch: 'garter', how_to_steps: ['Knit a swatch first.', 'Knit every row.'] }),
+  ]);
+  const report = await decodePhotos([{ slot: 'front', raster: whole, originalLongSide: 1000 }], {
+    language: 'en',
+    encodeJpeg,
+    focus,
+    ai: [{ provider: 'claude', apiKey: 'k' }],
+    fetchImpl: impl,
+  });
+  assert.equal(report.readings[0].reading.raster.width, 405);
+  assert.equal(report.readings[0].reading.texture.family, 'horizontal_ridges');
+  assert.equal(report.context, whole);
+  assert.equal(report.decoded.garment.value, 'swatch');
+  const prompt = bodies[0].messages[0].content.at(-1).text;
+  assert.ok(prompt.includes('only for context') && prompt.includes('only wants to make the selected part'));
+  const blueprint = toBlueprint(report.decoded, report.readings[0].reading, 'en');
+  assert.deepEqual(blueprint.aiSteps, ['Knit a swatch first.', 'Knit every row.']);
+  assert.deepEqual(verifyPattern(compilePattern(blueprint, { targetSize: 'x', circumferenceCm: 56, lengthCm: 22, gaugeSts10cm: 18, gaugeRows10cm: 24, easeCm: 0, needleSizeMm: 4.5, yarnWeight: 'Worsted / Aran', language: 'en' })), []);
+});
+
+test('a hat the compiler can write uses its checked steps, not the AI text', () => {
+  let d = applyAnswer(manualDecoded('en'), 'garment', 'beanie');
+  d = { ...applyAnswer(d, 'stitch', 'rib_1x1'), howTo: ['AI text'] };
+  assert.equal(toBlueprint(d, null, 'en').aiSteps, undefined);
+  const cable = { ...applyAnswer(d, 'stitch', 'cable'), howTo: ['Cross 6 sts every 8 rows'] };
+  assert.deepEqual(toBlueprint(cable, null, 'en').aiSteps, ['Cross 6 sts every 8 rows']);
+  const motif = { ...d, colorwork: { ...d.colorwork, value: 'stranded_motif' as const } };
+  assert.deepEqual(toBlueprint(motif, null, 'en').aiSteps, ['AI text']);
 });

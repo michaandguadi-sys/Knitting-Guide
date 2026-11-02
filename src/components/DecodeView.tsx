@@ -17,11 +17,13 @@ import {
   Wand2,
 } from 'lucide-react';
 import { STITCHES } from '../engine/stitches';
-import { DecodeStage, decodePhotos } from '../decode/decodePhotos';
+import { DecodeStage, decodePhotos, refineReport } from '../decode/decodePhotos';
 import {
   CONFIRM_BELOW,
   applyAnswer,
   buildQuestions,
+  DecodedChange,
+  describeChanges,
   gaugeFromWidth,
   isReadyToCompile,
   manualDecoded,
@@ -31,10 +33,10 @@ import {
   stitchHint,
   yarnFromGauge,
 } from '../decode/reconcile';
-import { AiStatus, DecodeReport, Decoded, FieldSource, Finding, PhotoInput, PhotoSlot, STITCH_VALUES } from '../decode/types';
+import { AiStatus, CANT_TELL, DecodeReport, Decoded, FieldSource, Finding, PhotoFocus, PhotoInput, PhotoMark, PhotoSlot, STITCH_VALUES } from '../decode/types';
 import { Language } from '../i18n/translations';
 import { ColorworkType, GarmentType, StitchType, YarnWeightCategory } from '../types/knit';
-import { EXAMPLE_IMAGE_URL, getStoredApiKey } from '../utils/aiAnalyzer';
+import { EXAMPLE_IMAGE_URL, getAiServices } from '../utils/aiAnalyzer';
 import { PhotoLoadError, encodeJpegBase64, loadPhoto, nextFrame, rasterToDataUrl } from '../vision/browserIO';
 import { QualityIssueCode } from '../vision/quality';
 
@@ -71,14 +73,22 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
   const [view, setView] = useState<'photo' | 'clean' | 'map'>('map');
   const [widthCm, setWidthCm] = useState('');
   const [gauge, setGauge] = useState<{ sts: number; rows: number | null; across: number } | null>(null);
+  const [wholePiece, setWholePiece] = useState(true);
+  const [focus, setFocus] = useState<PhotoFocus | null>(null);
+  const [focusSize, setFocusSize] = useState(0.45);
+  const [marks, setMarks] = useState<PhotoMark[]>([]);
+  const [correction, setCorrection] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
+  const [refineError, setRefineError] = useState<string | null>(null);
+  const [lastChanges, setLastChanges] = useState<DecodedChange[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const pendingSlot = useRef<PhotoSlot>('front');
 
   const slotInfo: Record<PhotoSlot, { name: string; tip: string; required?: boolean }> = {
     front: {
-      name: t('Whole piece', 'Prenda entera'),
-      tip: t('Laid flat on a plain surface, in daylight, filling most of the frame.', 'Plana sobre una superficie lisa, con luz de día, ocupando casi toda la foto.'),
+      name: t('Your picture', 'Tu foto'),
+      tip: t('Any photo or saved picture of the piece. If you take it yourself, use daylight and fill the frame.', 'Cualquier foto o imagen guardada de la prenda. Si la sacás vos, usá luz de día y llená el cuadro.'),
       required: true,
     },
     closeup: {
@@ -104,6 +114,7 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
     try {
       const { raster, originalLongSide, url } = await loadPhoto(source);
       setPhotos((prev) => ({ ...prev, [slot]: { slot, url, input: { slot, raster, originalLongSide } } }));
+      if (slot === 'front') setFocus(null);
       setReport(null);
       setDecoded(null);
       setGauge(null);
@@ -133,6 +144,41 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
     (camera ? cameraRef : fileRef).current?.click();
   };
 
+  const clearCorrections = () => {
+    setMarks([]);
+    setCorrection('');
+    setRefineError(null);
+    setLastChanges(null);
+  };
+
+  const runRefine = async () => {
+    if (!report || !decoded) return;
+    setIsRefining(true);
+    setRefineError(null);
+    try {
+      const next = await refineReport(
+        report,
+        { note: correction.trim(), marks, decoded },
+        { ai: getAiServices(), language: lang, encodeJpeg: encodeJpegBase64 }
+      );
+      setLastChanges(describeChanges(decoded, next.decoded, lang));
+      setReport(next);
+      setDecoded(next.decoded);
+      setMarks([]);
+      setCorrection('');
+    } catch (err) {
+      console.error(err);
+      setRefineError(
+        t(
+          'The AI could not be reached, so nothing changed. Your note and marks are still here. Try again.',
+          'No se pudo conectar con la IA, así que no cambió nada. Tu nota y tus marcas siguen acá. Probá de nuevo.'
+        )
+      );
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
   const runDecode = async () => {
     const inputs = SLOT_ORDER.flatMap((slot) => (photos[slot] ? [photos[slot]!.input] : []));
     if (!photos.front && inputs.length === 0) return;
@@ -140,11 +186,13 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
     setReport(null);
     setDecoded(null);
     setGauge(null);
+    clearCorrections();
     try {
       const result = await decodePhotos(inputs, {
-        apiKey: getStoredApiKey() || undefined,
+        ai: getAiServices(),
         language: lang,
         hints: hints.trim() || undefined,
+        focus: !wholePiece && focus ? { ...focus, size: focusSize } : undefined,
         encodeJpeg: encodeJpegBase64,
         onStage: (s) => setStage(s),
         yieldToUi: nextFrame,
@@ -219,7 +267,7 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
     const map: Record<QualityIssueCode, { title: string; fix: string }> = {
       too_small: {
         title: t(`The photo is small (${measured})`, `La foto es chica (${measured})`),
-        fix: t('Use the original photo, not a screenshot or a messaging copy.', 'Usá la foto original, no una captura ni una copia de mensajería.'),
+        fix: t('If you can, use a larger version. On Pinterest, open the pin and save the full-size picture.', 'Si podés, usá una versión más grande. En Pinterest, abrí el pin y guardá la imagen en tamaño completo.'),
       },
       too_dark: {
         title: t('Too dark to see the stitches', 'Muy oscura para ver los puntos'),
@@ -267,8 +315,8 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
           </h2>
           <p className="text-xs sm:text-sm text-[#6F756F]">
             {t(
-              'One photo can work. Each extra one answers a question a single photo cannot.',
-              'Una foto puede alcanzar. Cada foto extra responde algo que una sola no puede.'
+              'One picture is enough, even a saved one from Pinterest. Extra photos are only for when you have the piece itself.',
+              'Una sola foto alcanza, incluso una guardada de Pinterest. Las fotos extra son solo si tenés la prenda.'
             )}
           </p>
         </div>
@@ -337,6 +385,82 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
           })}
         </div>
 
+        {photos.front && (
+          <div className="p-3 rounded-2xl bg-[#FAF8F5] border border-[#E8E3DC] space-y-3">
+            <div className="text-xs font-bold text-[#1F2421]">{t('What do you want to make?', '¿Qué querés hacer?')}</div>
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('What do you want to make?', '¿Qué querés hacer?')}>
+              {([
+                [true, t('The whole piece', 'La prenda entera')],
+                [false, t('Only one part', 'Solo una parte')],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="radio"
+                  aria-checked={wholePiece === value}
+                  onClick={() => setWholePiece(value)}
+                  className={`min-h-[44px] rounded-xl border text-xs font-bold cursor-pointer ${wholePiece === value ? 'bg-[#2D5A43] text-white border-[#2D5A43]' : 'bg-white text-[#4A504A] border-[#DDD7CD]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {!wholePiece && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-[#6F756F]">
+                  {t('Tap the part you want, like a collar, a sleeve or a cable.', 'Tocá la parte que querés, como un cuello, una manga o una trenza.')}
+                </p>
+                <div className="relative max-w-md mx-auto overflow-hidden rounded-xl">
+                  <img
+                    src={photos.front.url}
+                    alt={t('Tap the part you want', 'Tocá la parte que querés')}
+                    onClick={(e) => {
+                      const box = e.currentTarget.getBoundingClientRect();
+                      setFocus({ x: (e.clientX - box.left) / box.width, y: (e.clientY - box.top) / box.height, size: focusSize });
+                      setReport(null);
+                      setDecoded(null);
+                    }}
+                    className="w-full cursor-crosshair touch-manipulation"
+                  />
+                  {focus && (() => {
+                    const { width, height } = photos.front!.input.raster;
+                    const side = Math.min(width, height) * focusSize;
+                    return (
+                      <span
+                        className="absolute border-[3px] border-amber-400 rounded-lg pointer-events-none shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+                        style={{
+                          width: `${(side / width) * 100}%`,
+                          height: `${(side / height) * 100}%`,
+                          left: `${Math.max(0, Math.min(1 - side / width, focus.x - side / width / 2)) * 100}%`,
+                          top: `${Math.max(0, Math.min(1 - side / height, focus.y - side / height / 2)) * 100}%`,
+                        }}
+                      />
+                    );
+                  })()}
+                </div>
+                <div className="flex gap-2" role="radiogroup" aria-label={t('Size of the part', 'Tamaño de la parte')}>
+                  {([
+                    [0.25, t('Small', 'Chica')],
+                    [0.45, t('Medium', 'Mediana')],
+                    [0.7, t('Large', 'Grande')],
+                  ] as const).map(([size, label]) => (
+                    <button
+                      key={size}
+                      type="button"
+                      role="radio"
+                      aria-checked={focusSize === size}
+                      onClick={() => setFocusSize(size)}
+                      className={`flex-1 min-h-[40px] rounded-xl border text-xs font-semibold cursor-pointer ${focusSize === size ? 'bg-[#E4ECE7] text-[#1C3A2B] border-[#2D5A43]' : 'bg-white text-[#4A504A] border-[#DDD7CD]'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <label className="block">
           <span className="text-xs font-semibold text-[#1F2421]">
             {t('Anything you already know? (optional)', '¿Algo que ya sepas? (opcional)')}
@@ -359,7 +483,7 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             type="button"
-            disabled={!photos.front || isBusy}
+            disabled={!photos.front || isBusy || (!wholePiece && !focus)}
             onClick={runDecode}
             className="flex-1 min-h-[52px] rounded-2xl bg-[#2D5A43] hover:bg-[#234734] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm sm:text-base flex items-center justify-center gap-2 cursor-pointer active:scale-95 touch-manipulation"
           >
@@ -434,7 +558,30 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
                   </button>
                 ))}
               </div>
-              <img src={previews[view]} alt={t('Decoded view of the piece', 'Vista analizada de la prenda')} className="w-full rounded-2xl border border-[#E8E3DC]" />
+              <div className="relative">
+                <img
+                  src={previews[view]}
+                  alt={t('Decoded view of the piece', 'Vista analizada de la prenda')}
+                  onClick={(e) => {
+                    const box = e.currentTarget.getBoundingClientRect();
+                    const mark = { x: (e.clientX - box.left) / box.width, y: (e.clientY - box.top) / box.height, note: '' };
+                    setMarks((prev) => (prev.length >= 4 ? prev : [...prev, mark]));
+                  }}
+                  className="w-full rounded-2xl border border-[#E8E3DC] cursor-crosshair touch-manipulation"
+                />
+                {marks.map((mark, i) => (
+                  <span
+                    key={i}
+                    className="absolute w-7 h-7 -ml-3.5 -mt-3.5 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center border-2 border-white shadow-md pointer-events-none"
+                    style={{ left: `${mark.x * 100}%`, top: `${mark.y * 100}%` }}
+                  >
+                    {i + 1}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[11px] text-[#6F756F]">
+                {t('Tap a spot that looks wrong or that you want checked. You can mark up to 4.', 'Tocá un lugar que parezca mal o que quieras revisar. Podés marcar hasta 4.')}
+              </p>
             </div>
 
             <div className="space-y-3">
@@ -532,8 +679,17 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
                   {t(`I need your eyes on ${questions.length === 1 ? 'one thing' : `${questions.length} things`}`, questions.length === 1 ? 'Necesito que mires una cosa' : `Necesito que mires ${questions.length} cosas`)}
                 </h3>
                 <p className="text-xs text-[#6F756F]">
-                  {t('I would rather ask than give you a wrong pattern.', 'Prefiero preguntar antes que darte un patrón equivocado.')}
+                  {t('I would rather ask than give you a wrong pattern. If you only have the picture, I can go with the most likely answers.', 'Prefiero preguntar antes que darte un patrón equivocado. Si solo tenés la foto, puedo elegir lo más probable.')}
                 </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDecoded((prev) => (prev ? questions.reduce((acc, q) => applyAnswer(acc, q.field, CANT_TELL), prev) : prev))
+                  }
+                  className="mt-2 min-h-[44px] px-3 rounded-xl bg-white border border-amber-300 text-xs font-bold text-amber-900 cursor-pointer"
+                >
+                  {t('I only have the picture: use the most likely answers', 'Solo tengo la foto: usá lo más probable')}
+                </button>
               </div>
               {questions.map((q) => (
                 <div key={q.field} className="space-y-2">
@@ -557,6 +713,116 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
                 </div>
               ))}
             </section>
+          )}
+
+          {report && (
+            <section className="bg-white rounded-3xl border-2 border-[#C2DEC8] shadow-xs p-4 sm:p-6 space-y-3">
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-[#1F2421]">
+                  {t('Something not right? Tell me', '¿Algo no está bien? Contame')}
+                </h3>
+                <p className="text-xs text-[#6F756F]">
+                  {t(
+                    'Tell me what looks wrong or what you want to know, and tap the photo to show me where. I will look again and change what your answer affects.',
+                    'Contame qué parece mal o qué querés saber, y tocá la foto para mostrarme dónde. Vuelvo a mirar y cambio lo que tu respuesta afecte.'
+                  )}
+                </p>
+              </div>
+
+              {decoded.reply && !isRefining && (
+                <div className="p-3 rounded-2xl bg-[#EBF2EE] border border-[#C2DEC8] text-xs sm:text-sm text-[#1C3A2B] font-medium" role="status">
+                  {decoded.reply}
+                </div>
+              )}
+              {lastChanges && !isRefining && (
+                <div className="text-xs text-[#1F2421] space-y-1">
+                  {lastChanges.length === 0 ? (
+                    <p className="text-[#6F756F]">{t('No conclusions changed.', 'No cambió ninguna conclusión.')}</p>
+                  ) : (
+                    lastChanges.map((change) => (
+                      <p key={change.field}>
+                        <span className="font-bold">{change.field}:</span> <span className="line-through text-[#8C938C]">{change.from}</span> → <span className="font-bold text-[#2D5A43]">{change.to}</span>
+                      </p>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {marks.map((mark, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-7 h-7 flex-shrink-0 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center">{i + 1}</span>
+                  <input
+                    value={mark.note}
+                    onChange={(e) => setMarks((prev) => prev.map((m, n) => (n === i ? { ...m, note: e.target.value } : m)))}
+                    placeholder={t('What about this spot? (optional)', '¿Qué pasa en este lugar? (opcional)')}
+                    aria-label={t(`Note for mark ${i + 1}`, `Nota para la marca ${i + 1}`)}
+                    className="flex-1 min-w-0 text-sm p-2.5 bg-[#FAF8F5] border border-[#DDD7CD] rounded-xl"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMarks((prev) => prev.filter((_, n) => n !== i))}
+                    aria-label={t(`Remove mark ${i + 1}`, `Quitar la marca ${i + 1}`)}
+                    className="w-11 h-11 flex-shrink-0 rounded-xl border border-[#DDD7CD] bg-white text-[#4A504A] flex items-center justify-center cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+
+              <textarea
+                value={correction}
+                onChange={(e) => setCorrection(e.target.value)}
+                rows={3}
+                placeholder={t(
+                  'For example: this is not a cable, it is lace. How many stitches is this diamond? It looks chunkier in real life.',
+                  'Por ejemplo: esto no es trenza, es calado. ¿Cuántos puntos tiene este rombo? En persona se ve más grueso.'
+                )}
+                aria-label={t('Your correction', 'Tu corrección')}
+                className="w-full text-sm p-3 bg-[#FAF8F5] border border-[#DDD7CD] rounded-xl"
+              />
+
+              {refineError && (
+                <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-800" role="alert">{refineError}</div>
+              )}
+
+              {getAiServices().length > 0 ? (
+                <button
+                  type="button"
+                  disabled={isRefining || (!correction.trim() && marks.length === 0)}
+                  onClick={runRefine}
+                  className="w-full min-h-[48px] rounded-2xl bg-[#2D5A43] hover:bg-[#234734] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] touch-manipulation"
+                >
+                  <Wand2 className="w-4 h-4" />
+                  {isRefining ? t('Looking again…', 'Mirando de nuevo…') : t('Look again with this', 'Mirar de nuevo con esto')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="w-full min-h-[48px] rounded-2xl border border-amber-300 bg-amber-50 text-amber-900 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4" />
+                  {t('Add an AI key to use this', 'Agregá una clave de IA para usar esto')}
+                </button>
+              )}
+            </section>
+          )}
+
+          {decoded.nextPhoto && report && !photos[decoded.nextPhoto.slot] && (
+            <div className="p-4 rounded-2xl bg-[#F4F6F5] border border-[#D5E3DC] flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 text-xs sm:text-sm text-[#1F2421]">
+                <span className="font-bold">{t(`If you have the piece, this photo would help most: ${slotInfo[decoded.nextPhoto.slot].name}.`, `Si tenés la prenda, esta foto ayudaría más: ${slotInfo[decoded.nextPhoto.slot].name}.`)}</span>{' '}
+                {decoded.nextPhoto.reason}
+              </div>
+              <button
+                type="button"
+                onClick={() => pick(decoded.nextPhoto!.slot, false)}
+                className="min-h-[44px] px-4 rounded-xl bg-[#E4ECE7] text-[#2D5A43] text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer flex-shrink-0"
+              >
+                <ImagePlus className="w-4 h-4" />
+                {t('Add it', 'Agregarla')}
+              </button>
+            </div>
           )}
 
           {/* Stage 3: what it is */}
@@ -754,13 +1020,13 @@ const AiBanner: React.FC<{ ai: AiStatus; t: (en: string, es: string) => string; 
     );
   }
   const failure: Record<string, string> = {
-    bad_key: t('Google rejected your key.', 'Google rechazó tu clave.'),
-    quota: t('Your free Gemini quota is used up for now. Try again later.', 'Por ahora se agotó tu cuota gratis de Gemini. Probá más tarde.'),
-    network: t('Could not reach Google. Check your connection.', 'No se pudo conectar con Google. Revisá tu conexión.'),
-    timeout: t('Google took too long to answer.', 'Google tardó demasiado en responder.'),
-    blocked: t('Google refused to process this photo.', 'Google no quiso procesar esta foto.'),
-    invalid_response: t('Google answered with something unusable.', 'Google respondió algo que no se puede usar.'),
-    no_model: t('No suitable Gemini model is available for this key.', 'No hay un modelo de Gemini adecuado para esta clave.'),
+    bad_key: t('The AI service rejected your key.', 'El servicio de IA rechazó tu clave.'),
+    quota: t('The AI limit or credit on your key has run out for now. Try again later.', 'Por ahora se agotó el límite o el crédito de tu clave de IA. Probá más tarde.'),
+    network: t('Could not reach the AI service. Check your connection.', 'No se pudo conectar con el servicio de IA. Revisá tu conexión.'),
+    timeout: t('The AI service took too long to answer.', 'El servicio de IA tardó demasiado en responder.'),
+    blocked: t('The AI service refused to process this photo.', 'El servicio de IA no quiso procesar esta foto.'),
+    invalid_response: t('The AI service answered with something unusable.', 'El servicio de IA respondió algo que no se puede usar.'),
+    no_model: t('No suitable AI model is available for this key.', 'No hay un modelo de IA adecuado para esta clave.'),
   };
   return (
     <div className="px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs sm:text-sm text-amber-900 flex flex-col sm:flex-row sm:items-center gap-2">
@@ -769,8 +1035,8 @@ const AiBanner: React.FC<{ ai: AiStatus; t: (en: string, es: string) => string; 
           {ai.state === 'failed' ? failure[ai.reason] : t('Photo measurements only, without AI.', 'Solo mediciones de la foto, sin IA.')}
         </span>{' '}
         {t(
-          'Measurements can see the structure, but they cannot name every stitch or tell how it was made. Please answer the questions below. Adding a free Gemini key makes this far better. Your photos then go to Google for analysis.',
-          'Las mediciones ven la estructura, pero no pueden nombrar cada punto ni decir cómo se tejió. Respondé las preguntas de abajo. Sumar una clave gratis de Gemini lo mejora mucho. En ese caso tus fotos van a Google para el análisis.'
+          'Measurements can see the structure, but they cannot name every stitch or tell how it was made. Please answer the questions below. Adding an AI key should help a lot. Your photos then go to that AI service for analysis.',
+          'Las mediciones ven la estructura, pero no pueden nombrar cada punto ni decir cómo se tejió. Respondé las preguntas de abajo. Sumar una clave de IA debería ayudar mucho. En ese caso tus fotos van a ese servicio de IA para el análisis.'
         )}
       </div>
       <button type="button" onClick={onOpenSettings} className="min-h-[42px] px-3 rounded-xl bg-white border border-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer flex-shrink-0">

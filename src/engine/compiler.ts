@@ -1283,7 +1283,8 @@ export function compileSwatchPattern(blueprint: KnitBlueprint, constraints: Knit
   for (let r = 0; r < Math.max(4, spec.repeatRows * 2); r++) chartRows.push(chartRowFromColumns(sample, r, spec));
 
   return resultFrom(b, blueprint, constraints, {
-    title: t(`Test swatch in ${stitchName}`, `Muestra en ${stitchName}`),
+    // Named for what was decoded: a cable swatch stays a cable swatch even with a plain base written.
+    title: t(`Test swatch: ${nameOf(STITCHES[blueprint.mainStitch], lang)}`, `Muestra: ${nameOf(STITCHES[blueprint.mainStitch], lang)}`),
     finished: { circumferenceCm: Math.round((castOn / stsPerCm) * 10) / 10, totalLengthCm: Math.round((rows / rowsPerCm) * 10) / 10 },
     castOn,
     area: 15 * 15,

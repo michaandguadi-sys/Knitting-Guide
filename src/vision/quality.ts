@@ -104,9 +104,10 @@ export function assessQuality(input: QualityInput): QualityReport {
   }
 
   const issues: QualityIssue[] = [];
-  if (originalLongSide < 500) {
+  // Pinterest pins are often 474 or 736 px wide, and the AI can still read many of them.
+  if (originalLongSide < 240) {
     issues.push({ code: 'too_small', severity: 'block', measured: `${originalLongSide}px` });
-  } else if (originalLongSide < 900) {
+  } else if (originalLongSide < 700) {
     issues.push({ code: 'too_small', severity: 'warn', measured: `${originalLongSide}px` });
   }
   if (darkClipped > 0.35 || meanLuma < 35) {

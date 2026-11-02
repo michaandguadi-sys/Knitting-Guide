@@ -124,9 +124,15 @@ test('a blurred photo is not read confidently', () => {
 test('quality gate flags dark and tiny photos', () => {
   const dark = readFabric(darken(renderFabric({ stitch: 'garter', color: [80, 80, 80] }), 0.12));
   assert.ok(dark.quality.issues.some((i) => i.code === 'too_dark'));
-  const tiny = readFabric(renderFabric({ stitch: 'garter', width: 300, height: 300 }), 300);
+  const tiny = readFabric(renderFabric({ stitch: 'garter', width: 200, height: 200 }), 200);
   assert.equal(tiny.quality.usable, false);
   assert.ok(tiny.quality.issues.some((i) => i.code === 'too_small'));
+});
+
+test('a small Pinterest-size picture is flagged but still usable', () => {
+  const pin = readFabric(renderFabric({ stitch: 'garter', width: 474, height: 474 }), 474);
+  assert.equal(pin.quality.usable, true);
+  assert.ok(pin.quality.issues.some((i) => i.code === 'too_small' && i.severity === 'warn'));
 });
 
 test('a close-up keeps all its fabric instead of cutting stitches away', () => {

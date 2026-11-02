@@ -186,6 +186,26 @@ export const PatternView: React.FC<PatternViewProps> = ({
         </div>
       </div>
 
+      {pattern.blueprint.aiSteps && pattern.blueprint.aiSteps.length > 0 && (
+        <div className="space-y-3 bg-[#F4F6F5] p-4 sm:p-5 rounded-2xl border border-[#D5E3DC]">
+          <div>
+            <h3 className="text-sm sm:text-base font-black text-[#1F2421]">
+              {isEs ? 'Cómo hacer lo que muestra la foto' : 'How to make what the picture shows'}
+            </h3>
+            <p className="text-xs text-[#6F756F]">
+              {isEs
+                ? 'Lo escribió la IA mirando tu foto. No pasó por el control de puntos como el resto, y los números pueden ser estimados, así que probalo primero en una muestra.'
+                : 'Written by the AI from your picture. It has not been through the stitch check like the rest, and numbers may be estimates, so try it on a swatch first.'}
+            </p>
+          </div>
+          <ol className="space-y-2 list-decimal list-inside text-xs sm:text-sm text-[#1F2421]">
+            {pattern.blueprint.aiSteps.map((step, idx) => (
+              <li key={idx} className="leading-relaxed">{step}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       {/* Quick Search Bar */}
       <PatternSearchBar
         searchQuery={searchQuery}

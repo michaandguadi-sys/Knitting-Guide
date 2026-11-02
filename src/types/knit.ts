@@ -69,6 +69,8 @@ export interface KnitBlueprint {
   confidenceScore: number | null;
   madeBy?: MadeBy;
   visionNotes?: string;
+  /** Steps written by the AI for what the compiler cannot write. Not stitch-checked. */
+  aiSteps?: string[];
   isolatedImageUrl?: string;
   croppedImageUrl?: string;
   backgroundRatio?: number;

@@ -6,7 +6,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Language } from '../i18n/translations';
-import { getStoredApiKey, isApiKeyVerified } from '../utils/aiAnalyzer';
+import { getAiServices, isApiKeyVerified } from '../utils/aiAnalyzer';
 
 export type AppNavTab = 'photo' | 'pattern' | 'counter' | 'projects' | 'settings';
 
@@ -31,8 +31,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCraftNotes,
 }) => {
   const isEs = lang === 'es';
-  const hasKey = Boolean(getStoredApiKey());
-  const isVerified = isApiKeyVerified();
+  const service = getAiServices()[0];
+  const hasKey = Boolean(service);
+  const isVerified = service ? isApiKeyVerified(service.provider) : false;
 
   return (
     <header className="sticky top-0 z-40 bg-[#FAF8F5]/95 backdrop-blur-md border-b border-[#E8E3DC] no-print">
@@ -73,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
                     ? (isEs ? 'IA activa' : 'AI on')
                     : hasKey
                     ? (isEs ? 'IA sin verificar' : 'AI unverified')
-                    : (isEs ? 'Modo Offline' : 'Offline Mode')}
+                    : (isEs ? 'Sin IA' : 'No AI')}
                 </span>
               </button>
             </div>
