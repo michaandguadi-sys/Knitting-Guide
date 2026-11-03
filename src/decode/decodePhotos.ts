@@ -1,6 +1,6 @@
 import { FabricReading, readFabric } from '../vision/pipeline';
 import { Raster, crop, fitLongSide } from '../vision/raster';
-import { AiAnalysis, AiCallOptions, AiError, AiImage, AiRefinement, FetchLike, ProviderId, buildRefinePrompt } from './analysis';
+import { AiAnalysis, AiCallOptions, AiError, AiImage, AiRefinement, FetchLike, Observation, ProviderId, buildRefinePrompt } from './analysis';
 import { analyzeWithClaude, refineWithClaude } from './claude';
 import { analyzeWithGemini, refineWithGemini } from './gemini';
 import { buildQuestions, isReadyToCompile, keepYourAnswers, knownFacts, overallConfidence, pickStitchReading, reconcile } from './reconcile';
@@ -20,6 +20,9 @@ export interface DecodeOptions {
   fetchImpl?: FetchLike;
   sleep?: (ms: number) => Promise<void>;
   onStage?: (stage: DecodeStage, slot?: PhotoSlot) => void;
+  /** Each result as soon as it exists, so that the screen can show real progress. */
+  onReading?: (slot: PhotoSlot, reading: FabricReading) => void;
+  onObservation?: (observation: Observation) => void;
   /** Lets the page paint between heavy steps on a phone. */
   yieldToUi?: () => Promise<void>;
 }
@@ -145,7 +148,9 @@ export async function decodePhotos(photos: PhotoInput[], options: DecodeOptions)
       context = photo.raster;
       raster = cropToFocus(photo.raster, options.focus);
     }
-    readings.push({ slot: photo.slot, reading: readFabric(raster, photo.originalLongSide) });
+    const reading = readFabric(raster, photo.originalLongSide);
+    readings.push({ slot: photo.slot, reading });
+    options.onReading?.(photo.slot, reading);
   }
   options.onStage?.('measure');
   await pause();
@@ -165,6 +170,7 @@ export async function decodePhotos(photos: PhotoInput[], options: DecodeOptions)
           fetchImpl: options.fetchImpl,
           sleep: options.sleep,
           onStage: (stage) => options.onStage?.(stage === 'observing' ? 'observe' : 'deduce'),
+          onObservation: options.onObservation,
         });
         deduction = result.deduction;
         observation = result.observation;

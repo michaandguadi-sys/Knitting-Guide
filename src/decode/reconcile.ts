@@ -77,6 +77,18 @@ function familyWord(family: TextureFamily, lang: Lang): string {
   }
 }
 
+/** One plain sentence about what the measurements show, for the progress screen. */
+export function describeTexture(reading: FabricReading, lang: Lang): string {
+  const t = tr(lang);
+  const { texture, segment } = reading;
+  const shape = familyWord(texture.family, lang);
+  const across = texture.pxPerStitch ? Math.round(segment.box.width / texture.pxPerStitch) : null;
+  const opening = t(`The fabric shows ${shape}.`, `El tejido muestra ${shape}.`);
+  return across
+    ? `${opening} ${t(`About ${across} stitches across.`, `Unos ${across} puntos de ancho.`)}`
+    : opening;
+}
+
 export function pickStitchReading(readings: { slot: PhotoSlot; reading: FabricReading }[]): FabricReading {
   // A close-up shows stitches best, so it wins unless it could not be read at all.
   const rank = (r: { slot: PhotoSlot; reading: FabricReading }) =>
@@ -366,6 +378,7 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
     out.push({
       field: 'garment',
       prompt: t('What is this piece?', '¿Qué es esta prenda?'),
+      where: t('Look at the whole picture.', 'Mirá la foto entera.'),
       why: t('The steps depend on it.', 'Los pasos dependen de esto.'),
       options: [...garments.map(([value, label]) => ({ value, label, hint: '' })), cantTell],
     });
@@ -377,6 +390,7 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
     out.push({
       field: 'stitch',
       prompt: t('Which of these matches the fabric?', '¿Cuál de estos se parece al tejido?'),
+      where: t('Look at the marked spot, and try the stitch map too.', 'Mirá el lugar marcado, y probá también el mapa de puntos.'),
       why: t('This is the hardest thing to read from a photo, and every row depends on it. Compare with the picture, or with the piece if you have it.', 'Es lo más difícil de leer en una foto, y de esto depende cada vuelta. Comparalo con la foto, o con la prenda si la tenés.'),
       options: [...ordered.map((value) => ({ value, label: stitchWord(value, lang), hint: stitchHint(value, lang) })), cantTell],
     });
@@ -385,6 +399,7 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
     out.push({
       field: 'method',
       prompt: t('Is there a seam?', '¿Tiene costura?'),
+      where: t('Look for a straight vertical line, especially at the side or back.', 'Buscá una línea vertical recta, sobre todo al costado o atrás.'),
       why: t('A seam means it was worked flat, turning at each row. No seam means in the round, always on the front. This changes which stitches you make.', 'Con costura se tejió plano, girando en cada hilera. Sin costura, en redondo, siempre del derecho. Esto cambia qué puntos hacés.'),
       options: [
         { value: 'round', label: t('No seam: in the round', 'Sin costura: en redondo'), hint: t('The fabric goes all the way around without a join.', 'El tejido da toda la vuelta sin unión.') },
@@ -393,14 +408,16 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
       ],
     });
   }
-  if (open(decoded.direction) && decoded.garment.value === 'beanie' && decoded.method.value === 'round') {
+  if (open(decoded.edgeStitch) && decoded.garment.value === 'beanie') {
+    const brims: StitchType[] = ['rib_1x1', 'rib_2x2', 'garter'];
     out.push({
-      field: 'direction',
-      prompt: t('How does the top of the hat look?', '¿Cómo se ve la punta del gorro?'),
-      why: t('It tells you where the knitter started.', 'Indica dónde empezó a tejer.'),
+      field: 'edgeStitch',
+      prompt: t('Is the brim a different stitch from the body?', '¿El puño es de otro punto que el cuerpo?'),
+      where: t('Compare the marked brim with the fabric above it.', 'Compará el puño marcado con el tejido de arriba.'),
+      why: t('A brim is often rib, even when the body is not. Getting it right also sets which needle you use for it.', 'El puño suele ser elástico aunque el cuerpo no lo sea. Esto también define qué aguja usás para hacerlo.'),
       options: [
-        { value: 'bottom_up', label: t('Gathered: started at the brim', 'Fruncida: empezó en el puño'), hint: t('Stitches pulled together with a small pucker.', 'Puntos juntados con un pequeño frunce.') },
-        { value: 'top_down', label: t('Smooth circle: started at the top', 'Círculo liso: empezó en la punta'), hint: t('A neat start with lines growing outward.', 'Un inicio prolijo con líneas que crecen hacia afuera.') },
+        { value: 'same', label: t('No, the same all over', 'No, igual en toda la prenda'), hint: '' },
+        ...brims.map((value) => ({ value, label: stitchWord(value, lang), hint: stitchHint(value, lang) })),
         cantTell,
       ],
     });
@@ -409,6 +426,7 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
     out.push({
       field: 'foldedBrim',
       prompt: t('Is the brim folded up?', '¿El puño está doblado?'),
+      where: t('Look at the marked brim: is there a fold along its edge?', 'Mirá el puño marcado: ¿hay un doblez en el borde?'),
       why: t('A folded brim is knitted twice as tall.', 'Un puño doblado se teje el doble de alto.'),
       options: [
         { value: 'true', label: t('Yes, double thickness', 'Sí, doble grosor'), hint: '' },
@@ -433,6 +451,8 @@ export function applyAnswer(decoded: Decoded, field: DecodeQuestion['field'], va
       return { ...decoded, stitch: { ...you(value as StitchType), alternatives: decoded.stitch.alternatives } };
     case 'garment':
       return { ...decoded, garment: you(value as GarmentType) };
+    case 'edgeStitch':
+      return { ...decoded, edgeStitch: you(value as StitchType | 'same') };
     case 'method':
       return { ...decoded, method: you(value as Decoded['method']['value']) };
     case 'direction':

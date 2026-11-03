@@ -36,6 +36,26 @@
   z-index: 10;
 }
 
+/* Moving line over the picture while it is being read */
+.kv-scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #f59e0b;
+  box-shadow: 0 0 14px 4px rgba(245, 158, 11, 0.55);
+  animation: kv-scan 2.6s ease-in-out infinite alternate;
+}
+
+@keyframes kv-scan {
+  from { top: 0; }
+  to { top: calc(100% - 3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kv-scan-line { display: none; }
+}
+
 /* Print styling for clean export to PDF */
 @media print {
   header, nav, .no-print, button, .interactive-controls {

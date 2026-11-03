@@ -9,6 +9,7 @@ import { SavedProjectsView } from './components/SavedProjectsView';
 import { SettingsView } from './components/SettingsView';
 import { CraftNotesModal } from './components/CraftNotesModal';
 import { YARN_SPECS, compilePattern, sizePresetsFor } from './engine/compiler';
+import { suggestGauge } from './engine/stitches';
 import { pickStitchReading, toBlueprint } from './decode/reconcile';
 import { GarmentType, KnitBlueprint, KnitUserConstraints, SavedProject, TrackerPosition } from './types/knit';
 import { Language } from './i18n/translations';
@@ -34,9 +35,6 @@ const DEFAULT_CONSTRAINTS: KnitUserConstraints = {
   yarnWeight: 'Worsted / Aran',
   language: 'es',
 };
-
-/** Row gauge when only stitches are known: stockinette rows run about 1.33 times the stitches. */
-const rowsFromSts = (sts: number) => Math.round(sts * 1.33 * 2) / 2;
 
 /** Typical gauge for a yarn, the starting point until the knitter has a swatch. */
 const GAUGE_BY_YARN: Record<KnitUserConstraints['yarnWeight'], number> = {
@@ -189,14 +187,15 @@ export default function App() {
     const next = toBlueprint(decoded, reading, lang);
     setBlueprint(next);
     const yarn = decoded.yarnWeight.value;
-    const sts = gauge?.sts ?? GAUGE_BY_YARN[yarn];
+    // A gauge measured from the picture is already this fabric's. Otherwise estimate it per stitch.
+    const estimate = suggestGauge(next.mainStitch, GAUGE_BY_YARN[yarn]);
     setConstraints((prev) => ({
       ...prev,
       ...sizeFor(next.garmentType, lang),
       yarnWeight: yarn,
       needleSizeMm: decoded.needleMm.value || YARN_SPECS[yarn].defaultNeedle,
-      gaugeSts10cm: sts,
-      gaugeRows10cm: gauge?.rows ?? rowsFromSts(sts),
+      gaugeSts10cm: gauge?.sts ?? estimate.sts,
+      gaugeRows10cm: gauge?.rows ?? estimate.rows,
       language: lang,
     }));
     // A new piece must never inherit the row count of whatever was on the needles before.

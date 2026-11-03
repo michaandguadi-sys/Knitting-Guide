@@ -10,8 +10,8 @@ export const TECHNIQUES: Record<string, Technique> = {
     id: 'long_tail_cast_on',
     name: { en: 'Long-tail cast on', es: 'Montaje de hebra larga' },
     how: {
-      en: 'Leave a tail of about 3 cm per stitch. Make a slip knot on the needle. Hold the tail over your thumb and the ball yarn over your index finger. Bring the needle under the thumb strand, over the index strand, back through the thumb loop, then drop the thumb loop and tighten gently. Keep it loose: if the edge will not stretch around the head, cast on again over two needles held together.',
-      es: 'Dejá una hebra de unos 3 cm por punto. Hacé un nudo corredizo en la aguja. Sostené la hebra suelta sobre el pulgar y la del ovillo sobre el índice. Pasá la aguja por debajo de la hebra del pulgar, por encima de la del índice, de vuelta por el lazo del pulgar, soltá el lazo y ajustá suave. Que quede flojo: si el borde no estira alrededor de la cabeza, volvé a montar sobre dos agujas juntas.',
+      en: 'Leave a tail of about 3 cm per stitch. Make a slip knot on the needle. Hold the tail over your thumb and the ball yarn over your index finger. Bring the needle under the thumb strand, over the index strand, back through the thumb loop, then drop the thumb loop and tighten gently. Leave about a finger of space between stitches. If the edge will not stretch around the head, cast on again, or use a German twisted cast-on, which is stretchier. On a folded rib brim the cast-on edge shows, so a tubular cast-on looks best if you know it.',
+      es: 'Dejá una hebra de unos 3 cm por punto. Hacé un nudo corredizo en la aguja. Sostené la hebra suelta sobre el pulgar y la del ovillo sobre el índice. Pasá la aguja por debajo de la hebra del pulgar, por encima de la del índice, de vuelta por el lazo del pulgar, soltá el lazo y ajustá suave. Dejá un dedo de espacio entre puntos. Si el borde no estira alrededor de la cabeza, volvé a montar, o usá un montaje alemán retorcido, que estira más. En un puño doblado el borde se ve, así que un montaje tubular queda mejor si lo conocés.',
     },
   },
   join_round: {
@@ -124,6 +124,46 @@ export const TECHNIQUES: Record<string, Technique> = {
     how: {
       en: 'Work with both yarns attached, always carrying the unused one loosely across the back. Spread the stitches on the right needle before each change so that the fabric stays stretchy. If a colour rests for more than 5 stitches, twist the two yarns once at the back to trap it.',
       es: 'Trabajá con ambas hebras unidas, llevando siempre floja por detrás la que no se usa. Antes de cada cambio estirá los puntos de la aguja derecha para que el tejido siga elástico. Si un color descansa más de 5 puntos, cruzá las dos hebras una vez por detrás para sujetarlo.',
+    },
+  },
+  speed_swatch: {
+    id: 'speed_swatch',
+    name: { en: 'Swatch in the round without a tube', es: 'Muestra en redondo sin hacer un tubo' },
+    how: {
+      en: 'Work across on the right side only. At the end, do not turn: slide the stitches back, carry the yarn loosely behind the work, and knit across again. When you finish, cut the loose strands and block it flat. It gives your real in-the-round gauge without knitting a hat-sized tube.',
+      es: 'Tejé solo del lado del derecho. Al final no gires: volvé a pasar los puntos, llevá la hebra floja por detrás y tejé de nuevo. Al terminar, cortá las hebras sueltas y bloqueala plana. Te da tu tensión real en redondo sin tejer un tubo del tamaño de un gorro.',
+    },
+  },
+  two_end_tail: {
+    id: 'two_end_tail',
+    name: { en: 'Never guess the long tail', es: 'Nunca adivines la hebra larga' },
+    how: {
+      en: 'Cast on using both ends of the ball, one as the tail and one as the working yarn. When the cast-on is done, cut the extra strand. You cannot run out of tail.',
+      es: 'Montá con las dos puntas del ovillo, una como hebra suelta y otra como hebra de trabajo. Al terminar de montar, cortá la que sobra. Así nunca te queda corta.',
+    },
+  },
+  flat_start_join: {
+    id: 'flat_start_join',
+    name: { en: 'A join that cannot twist', es: 'Una unión que no se retuerce' },
+    how: {
+      en: 'Work the first two rows flat, back and forth, and only then join into the round. The fabric now shows you clearly whether it is straight. Close the small gap with the tail when you finish.',
+      es: 'Tejé las dos primeras hileras planas, de ida y vuelta, y recién ahí uní en redondo. El tejido te muestra claramente si está derecho. Al terminar, cerrá el pequeño espacio con la hebra.',
+    },
+  },
+  lifeline: {
+    id: 'lifeline',
+    name: { en: 'Lifeline', es: 'Hebra de seguridad' },
+    how: {
+      en: 'Thread a smooth cotton yarn through every stitch on the needle with a tapestry needle, skipping the markers, and keep knitting. If something goes wrong, pull the needle out and rip back: the stitches stop at the lifeline, ready to pick up.',
+      es: 'Con una aguja lanera pasá un hilo liso de algodón por todos los puntos de la aguja, sin pasar por los marcadores, y seguí tejiendo. Si algo sale mal, sacá la aguja y deshacé: los puntos se frenan en esa hebra, listos para levantar.',
+    },
+  },
+  inside_out: {
+    id: 'inside_out',
+    name: { en: 'Skip the purling: work inside out', es: 'Evitá el revés: tejé del otro lado' },
+    how: {
+      en: 'Reverse stockinette in the round is the same fabric as stockinette seen from the back. Turn the work inside out and knit every round, then turn it back when you finish. Most people knit faster and more evenly than they purl.',
+      es: 'El jersey revés en redondo es el mismo tejido que el jersey visto de atrás. Dá vuelta la labor y tejé todas las vueltas al derecho, y al terminar volvé a darla vuelta. Casi todo el mundo teje al derecho más rápido y parejo que al revés.',
     },
   },
   gauge_swatch: {

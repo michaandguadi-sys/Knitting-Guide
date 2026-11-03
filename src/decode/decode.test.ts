@@ -5,6 +5,7 @@ import { analyzeWithGemini, checkGeminiKey, chooseModels, toGeminiSchema } from 
 import { CLAUDE_MODEL, analyzeWithClaude, checkClaudeKey, toClaudeSchema } from './claude';
 import { buildMarkImages, cropToFocus, decodePhotos, refineReport } from './decodePhotos';
 import { CANT_TELL } from './types';
+import { spotForQuestion } from './questionSpots';
 import { applyAnswer, buildQuestions, CONFIRM_BELOW, describeChanges, gaugeFromWidth, isReadyToCompile, keepYourAnswers, knownFacts, manualDecoded, toBlueprint, yarnFromGauge } from './reconcile';
 import { renderFabric } from '../vision/testing/synthFabric';
 import { compilePattern, verifyPattern } from '../engine/compiler';
@@ -521,4 +522,37 @@ test('a hat the compiler can write uses its checked steps, not the AI text', () 
   assert.deepEqual(toBlueprint(cable, null, 'en').aiSteps, ['Cross 6 sts every 8 rows']);
   const motif = { ...d, colorwork: { ...d.colorwork, value: 'stranded_motif' as const } };
   assert.deepEqual(toBlueprint(motif, null, 'en').aiSteps, ['AI text']);
+});
+
+test('progress reports each real result as soon as it exists', async () => {
+  const seen: string[] = [];
+  const { impl } = claudeServer([() => claudeReply(observation), () => claudeReply(goodDeduction)]);
+  await decodePhotos([{ slot: 'front', raster: renderFabric({ stitch: 'garter', width: 640, height: 640 }), originalLongSide: 1600 }], {
+    language: 'en',
+    encodeJpeg,
+    ai: [{ provider: 'claude', apiKey: 'k' }],
+    fetchImpl: impl,
+    onStage: (stage) => seen.push(stage),
+    onReading: () => seen.push('reading'),
+    onObservation: () => seen.push('observation'),
+  });
+  assert.deepEqual(seen, ['clean', 'reading', 'measure', 'observe', 'observation', 'deduce', 'done']);
+});
+
+test('questions mark a real spot on the picture, or none when no spot answers them', () => {
+  const closeUp = readFabric(renderFabric({ stitch: 'stockinette', width: 640, height: 640 }));
+  const spot = spotForQuestion('stitch', closeUp)!;
+  for (const value of [spot.x, spot.y, spot.w, spot.h]) assert.ok(value >= 0 && value <= 1, String(value));
+  assert.ok(spot.x + spot.w <= 1.001 && spot.y + spot.h <= 1.001);
+  assert.equal(spotForQuestion('method', closeUp), null);
+  assert.equal(spotForQuestion('foldedBrim', closeUp), null, 'a close-up has no brim to point at');
+});
+
+test('every question says what to look at', async () => {
+  const report = await decodePhotos([photo('seed')], { language: 'es', encodeJpeg });
+  let d = applyAnswer(report.decoded, 'garment', 'beanie');
+  d = applyAnswer(d, 'stitch', 'seed_stitch');
+  const all = [...report.questions, ...buildQuestions(d, 'es')];
+  assert.ok(all.length >= 3);
+  for (const q of all) assert.ok(q.where.length > 5, q.field);
 });

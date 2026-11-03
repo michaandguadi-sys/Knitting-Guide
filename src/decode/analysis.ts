@@ -80,7 +80,7 @@ const NEXT_PHOTOS: readonly NextPhoto[] = ['closeup', 'inside', 'top', 'edge', '
 export const OBSERVATION_SCHEMA = {
   type: 'object',
   properties: {
-    input_kind: { type: 'string', enum: ['knitted_item', 'crochet', 'woven_or_other', 'written_or_chart', 'unclear'] },
+    input_kind: { type: 'string', enum: ['knitted_item', 'crochet', 'woven_or_other', 'written_or_chart', 'not_real', 'unclear'] },
     is_crochet_evidence: { type: 'string' },
     surface_look: { type: 'string' },
     vs_or_bumps: { type: 'string' },
@@ -101,7 +101,7 @@ const confidence = { type: 'number' };
 export const DEDUCTION_SCHEMA = {
   type: 'object',
   properties: {
-    input_kind: { type: 'string', enum: ['knitted_item', 'crochet', 'woven_or_other', 'written_or_chart', 'unclear'] },
+    input_kind: { type: 'string', enum: ['knitted_item', 'crochet', 'woven_or_other', 'written_or_chart', 'not_real', 'unclear'] },
     garment: { type: 'string', enum: GARMENT_VALUES },
     garment_confidence: confidence,
     main_stitch: { type: 'string', enum: STITCH_VALUES },
@@ -152,22 +152,33 @@ Kind of picture:
 Stitch identity:
 - Stockinette: columns of small Vs on the outside, rows of bumps on the inside. Curls at edges.
 - Reverse stockinette: bumps on the outside with the Vs inside. Same fabric, opposite face.
-- Garter: pronounced horizontal ridges, one ridge per two rows, same on both sides. Lies flat.
+- Garter: pronounced horizontal ridges, one ridge per two rows, same on both sides, with a valley of Vs between the ridges. Reverse stockinette has bumps on every row and no valley. Lies flat.
+- A side-to-side garter piece can look like rib. Look for stretch and short-row wedges.
+- Twisted stitches: crossed legs at the base and crisp thin columns.
 - 1x1 rib: one column of Vs, one recessed column, alternating. 2x2 rib: two and two. When stretched a rib can look like stockinette, and when relaxed the purl columns vanish, so count columns, not depth.
 - Seed stitch: checkerboard of single bumps and Vs, grainy. Moss stitch: pairs of rows, blockier.
 - Fisherman's rib or brioche: plump, tall columns with deep channels and stacked bumps. Much thicker than plain rib.
-- Cables: raised ropes crossing over each other. Lace: deliberate holes in a pattern. Stranded colourwork: two or more colours in one row with loose strands (floats) across the inside. Intarsia: big colour blocks with no floats.
+- Cables: raised ropes crossing over each other. Read the rows between crossings by counting from one cross to the next on the same rope. 6 stitches crossing every 6 or 8 rows is common. Lace: deliberate holes in a pattern. Stranded colourwork: two or more colours in one row with loose strands (floats) across the inside. Stranded colour follows the stitch grid and puckers slightly. Intarsia: big colour blocks with no floats, interlocked at the edges. Duplicate stitch sits raised, with the base peeking through. Print cuts across stitches and has no relief.
+Traditions, and what they imply:
+- Fair Isle: two colours per row, worked in the round, often steeked. Selbu: stars in two colours, in the round.
+- Bohus: purls inside the colourwork, round yoke, fine halo yarn.
+- Gansey: dense fabric, gussets, patterned yoke.
+- Aran: cable panels on reverse stockinette, usually worked in pieces. Shetland lace: garter-based, with yarn-overs on both sides, hard-blocked.
+- Do not claim a construction signature for a tradition you cannot see evidence of.
 Common confusions to rule out explicitly:
 - A hat turned sideways makes rib look like garter. Use the garment's opening to find which way is up.
-- Crochet has chunky posts and knots that do not unravel, with no continuous interlocked columns of loops. If it is crochet, say so, since a knitting pattern cannot reproduce it.
+- Crochet has chunky posts and knots that do not unravel, with no continuous interlocked columns of loops. Look for a bar behind each V, because some crochet mimics stockinette. If it is crochet, say so, since a knitting pattern cannot reproduce it.
+- Worn rib is stretched, and blocked lace is opened out, so neither shows relaxed proportions.
+- Machine-made fabric is common in shop and Pinterest pictures. Very fine even rib on a cap is usually machine rib.
+- If the picture looks AI-generated, with too-perfect rows or impossible stitches, or is a print with no real stitches, use input_kind not_real and say so in notes.
 - Printed fabric, or fleece with a knit look, has no real stitches.
 Which way it was worked:
 - In the round: no side seam, and a small step (jog) where horizontal stripes start and end. Rib or stockinette continues unbroken all the way around.
 - Flat: a vertical seam, or for a scarf two matching selvedge edges. A stockinette tube with a seam was worked flat.
-- Bottom-up hat: the crown narrows through decreases and is gathered closed at the top with a small pucker, and the brim edge is a cast-on edge.
-- Top-down hat: smooth circular start at the top with lines of increases radiating out, and the brim ends in a bind-off edge: a horizontal chain along the very edge.
-- Cast-on edge: a neat line of small bumps, often firmer. Bind-off edge: a row of sideways Vs like a chain.
-- The Vs of stockinette point down toward the cast-on edge and open toward the working direction. Upside-down Vs relative to the garment mean it was worked in the other direction.
+- Direction comes from shaping lines. Decreases stack over ending columns. Increases show bars or small holes. A closed top does not prove bottom-up, because a top-down hat started from about 8 stitches also closes small.
+- Long-tail cast-on and bind-off both read as chains, and a folded or tubular edge shows neither. If the edge cannot settle it, say unknown.
+- Which way the Vs point cannot be read from a photo. Never put confidence above 0.3 on it.
+- In a mirrored photo cable crossings swap direction, and k2tog swaps with ssk. Rotating the photo changes neither.
 - Folded brim: visibly double thick with a fold line at the very bottom edge.
 Machine or hand:
 - Machine: extremely even tension, very fine gauge, linked seams, overlocked or cut edges, sewn crown, labels. A stitch that looks odd may be a tuck stitch (cardigan or half-cardigan). Its closest hand equivalent is fisherman's rib.
@@ -176,7 +187,7 @@ Yarn weight:
 Confidence:
 - 0.9 only if the feature is unmistakable in these photos. 0.5 means a reasonable guess. Below 0.4 means it cannot be judged from these photos. Do not inflate it: the knitter will be asked to check anything uncertain, which is better than a confident mistake.`;
 
-export function buildObservationPrompt(images: AiImage[], measurements: string, hints: string | undefined): string {
+export function buildObservationPrompt(images: AiImage[], measurements: string, hints: string | undefined, language: 'en' | 'es' = 'en'): string {
   const list = images.map((img, i) => `Image ${i + 1}: ${img.caption}`).join('\n');
   return `You are looking at photos of a textile. First only describe what is visible. Do not name stitches or decide how it was made yet, and never guess beyond the images.
 
@@ -186,7 +197,7 @@ Automatic measurements from the photo, which can be wrong:
 ${measurements}
 ${hints ? `\nThe knitter says: ${hints}` : ''}
 
-Fill every field with short concrete observations. Write "not visible" when something cannot be seen. In cannot_see list what these photos do not show that would help.`;
+Fill every field with short concrete observations in ${language === 'es' ? 'Argentine Spanish (voseo)' : 'English'}, because the knitter reads them. Write "${language === 'es' ? 'no se ve' : 'not visible'}" when something cannot be seen. In cannot_see list what these photos do not show that would help.`;
 }
 
 export function buildDeductionPrompt(observation: Observation, measurements: string, language: 'en' | 'es', hints: string | undefined): string {
@@ -244,7 +255,7 @@ export function validateDeduction(raw: unknown): Deduction {
   const wedges = typeof r.crown_wedges === 'number' && r.crown_wedges >= 3 && r.crown_wedges <= 12 ? Math.round(r.crown_wedges) : null;
   const needle = typeof r.needle_mm === 'number' && r.needle_mm >= 1.5 && r.needle_mm <= 25 ? r.needle_mm : 4.5;
   return {
-    input_kind: oneOf(r.input_kind, ['knitted_item', 'crochet', 'woven_or_other', 'written_or_chart', 'unclear'] as const, 'unclear'),
+    input_kind: oneOf(r.input_kind, ['knitted_item', 'crochet', 'woven_or_other', 'written_or_chart', 'not_real', 'unclear'] as const, 'unclear'),
     garment: oneOf(r.garment, GARMENT_VALUES, 'other'),
     garment_confidence: clamp01(r.garment_confidence, 0),
     main_stitch: r.main_stitch as StitchType,
@@ -290,7 +301,7 @@ export function validateObservation(raw: unknown): Observation {
     throw new AiError('invalid_response', 'Observation has no surface description');
   }
   return {
-    input_kind: oneOf(r.input_kind, ['knitted_item', 'crochet', 'woven_or_other', 'written_or_chart', 'unclear'] as const, 'unclear'),
+    input_kind: oneOf(r.input_kind, ['knitted_item', 'crochet', 'woven_or_other', 'written_or_chart', 'not_real', 'unclear'] as const, 'unclear'),
     is_crochet_evidence: text(r.is_crochet_evidence),
     surface_look: r.surface_look,
     vs_or_bumps: text(r.vs_or_bumps),
@@ -388,6 +399,7 @@ export interface AiCallOptions {
   sleep?: (ms: number) => Promise<void>;
   timeoutMs?: number;
   onStage?: (stage: 'observing' | 'deducing') => void;
+  onObservation?: (observation: Observation) => void;
   /** Overrides the provider's default model. */
   model?: string;
 }
@@ -402,10 +414,11 @@ export async function observeThenDeduce(
   images: AiImage[],
   measurements: string,
   hints: string | undefined,
-  options: Pick<AiCallOptions, 'language' | 'onStage'>
+  options: Pick<AiCallOptions, 'language' | 'onStage' | 'onObservation'>
 ): Promise<{ observation: Observation; deduction: Deduction }> {
   options.onStage?.('observing');
-  const observation = validateObservation(await generate(buildObservationPrompt(images, measurements, hints), OBSERVATION_SCHEMA));
+  const observation = validateObservation(await generate(buildObservationPrompt(images, measurements, hints, options.language), OBSERVATION_SCHEMA));
+  options.onObservation?.(observation);
   options.onStage?.('deducing');
   const deduction = validateDeduction(await generate(buildDeductionPrompt(observation, measurements, options.language, hints), DEDUCTION_SCHEMA));
   return { observation, deduction };

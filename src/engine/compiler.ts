@@ -135,7 +135,6 @@ export function calculateYarnEstimate(
 
 /** The glossary lists what this pattern actually uses and nothing else. */
 export function getStandardAbbreviations(
-  blueprint: KnitBlueprint,
   lang: 'en' | 'es' = 'es',
   used?: Set<StitchOp>,
   inRound = true
@@ -189,7 +188,6 @@ export function getStandardAbbreviations(
   entry('m1r', ['A1D', 'Aumento hacia la derecha levantando la hebra entre puntos'], ['M1R', 'Make one, right-leaning increase']);
   entry('k1b', ['D1A', 'Tejer al derecho en el punto de la vuelta de abajo'], ['K1b', 'Knit into the stitch one row below']);
   entry('sl1wyif', ['Desl1', 'Deslizar 1 punto como al revés con la hebra adelante'], ['Sl1 wyif', 'Slip 1 stitch purlwise with yarn in front']);
-  void blueprint;
   return list;
 }
 
@@ -234,6 +232,7 @@ class PatternBuilder {
   allRows: PatternRowInstruction[] = [];
   used = new Set<StitchOp>();
   sts = 0;
+  private lastSide: RowSide | null = null;
   private step = 1;
   private current: PatternSection | null = null;
 
@@ -271,6 +270,13 @@ class PatternBuilder {
   castOn(count: number, text: string, techniques: string[], checkpoint: string): void {
     this.sts = count;
     this.prep(text, { stitchCountAfter: count, techniques, checkpoint });
+  }
+
+  /** The side the next row is worked on, so that a bind-off follows the row before it. */
+  nextSide(): RowSide {
+    if (this.lastSide === 'RS') return 'WS';
+    if (this.lastSide === 'WS') return 'RS';
+    return this.flat ? 'RS' : 'round';
   }
 
   private label(number: number, side: RowSide): string {
@@ -342,6 +348,7 @@ class PatternBuilder {
     });
     this.current!.totalRows += count;
     this.sts = ending;
+    this.lastSide = rows[(count - 1) % rows.length].side;
   }
 
   finish(text: string, stitchCountAfter: number, techniques?: string[], checkpoint?: string): void {
@@ -404,8 +411,8 @@ function baseWarnings(blueprint: KnitBlueprint, constraints: KnitUserConstraints
     warnings.push({
       severity: 'info',
       message: t(
-        "Written as fisherman's rib, which looks nearly the same as brioche and is much easier to fix.",
-        'Se escribe como elástico inglés, que se ve casi igual que el punto inglés y es mucho más fácil de corregir.'
+        "Written as half fisherman's rib, a simpler plump rib. It is not the same fabric as brioche, so expect a difference.",
+        'Se escribe como medio elástico inglés, un elástico gordito más simple. No es el mismo tejido que el punto inglés, así que esperá alguna diferencia.'
       ),
     });
   }
@@ -459,8 +466,8 @@ function stripePlanText(stripes: StripeDefinition[], castOn: number, t: Tr): { t
           );
   return {
     text: t(
-      `Colour plan for every round, starting at the marker: ${parts}. Repeat this ${repeats} times around.${tail} Keep working the stitch pattern as usual, and only change which yarn you pick up. These widths are estimated from the photo, so adjust them by eye.`,
-      `Plan de color para cada vuelta, desde el marcador: ${parts}. Repetilo ${repeats} veces alrededor.${tail} Seguí tejiendo el punto como siempre y solo cambiá la hebra que usás. Los anchos son una estimación de la foto, así que ajustalos a ojo.`
+      `Colour plan for every round, starting at the marker: ${parts}. Repeat this ${repeats} times around.${tail} Keep working the stitch pattern as usual. For a purl stitch, bring both strands to the front, or the carried yarn shows on the right side. These widths are estimated from the photo, so adjust them by eye.`,
+      `Plan de color para cada vuelta, desde el marcador: ${parts}. Repetilo ${repeats} veces alrededor.${tail} Seguí tejiendo el punto como siempre. Para un punto revés, llevá las dos hebras adelante, o la que no usás se ve por el derecho. Los anchos son una estimación de la foto, así que ajustalos a ojo.`
     ),
     order: stripes,
   };
@@ -560,10 +567,10 @@ function gaugeStep(b: PatternBuilder, spec: StitchSpec, constraints: KnitUserCon
   const stitchName = nameOf(spec, lang);
   b.prep(
     t(
-      `Knit a test square before anything else. Cast on ${swatchSts} sts on ${constraints.needleSizeMm} mm needles and work about 15 cm in ${stitchName}${flat ? '' : ', ideally in the round, because many knitters purl tighter or looser than they knit'}. Wash or steam it and let it dry flat. You need ${constraints.gaugeSts10cm} sts and ${constraints.gaugeRows10cm} rows in 10 cm. Too many stitches: go up a needle size. Too few: go down. ${note} Type your real numbers into the gauge box and every count here recalculates.`,
-      `Tejé una muestra antes que nada. Montá ${swatchSts} puntos en agujas de ${constraints.needleSizeMm} mm y tejé unos 15 cm en ${stitchName}${flat ? '' : ', mejor en redondo, porque muchas tejedoras cambian la tensión al tejer al revés'}. Lavala o vaporizala y dejala secar plana. Necesitás ${constraints.gaugeSts10cm} puntos y ${constraints.gaugeRows10cm} vueltas en 10 cm. Si te dan más puntos, usá aguja más gruesa. Si te dan menos, más fina. ${note} Cargá tus números reales en el cuadro de tensión y se recalcula todo.`
+      `Knit a test square before anything else. Cast on ${swatchSts} sts on ${constraints.needleSizeMm} mm needles and work about 15 cm in ${stitchName}${flat ? '' : ', swatching the way you will really knit it, because many knitters purl tighter or looser than they knit'}. Wash or steam it and let it dry flat. You need ${constraints.gaugeSts10cm} sts and ${constraints.gaugeRows10cm} rows in 10 cm. Those are estimates for this stitch, and your swatch is what counts. Too many stitches: go up a needle size. Too few: go down. ${note} Type your real numbers into the gauge box and every count here recalculates.`,
+      `Tejé una muestra antes que nada. Montá ${swatchSts} puntos en agujas de ${constraints.needleSizeMm} mm y tejé unos 15 cm en ${stitchName}${flat ? '' : ', como la vas a tejer de verdad, porque muchas tejedoras cambian la tensión al tejer al revés'}. Lavala o vaporizala y dejala secar plana. Necesitás ${constraints.gaugeSts10cm} puntos y ${constraints.gaugeRows10cm} vueltas en 10 cm. Son estimaciones para este punto, y lo que vale es tu muestra. Si te dan más puntos, usá aguja más gruesa. Si te dan menos, más fina. ${note} Cargá tus números reales en el cuadro de tensión y se recalcula todo.`
     ),
-    { techniques: ['gauge_swatch'] }
+    { techniques: flat ? ['gauge_swatch'] : ['speed_swatch', 'gauge_swatch'] }
   );
 }
 
@@ -601,7 +608,7 @@ function resultFrom(
     },
     yarnEstimates: calculateYarnEstimate(blueprint, constraints, parts.area),
     materials: parts.materials,
-    abbreviations: getStandardAbbreviations(blueprint, lang, b.used, parts.inRound),
+    abbreviations: getStandardAbbreviations(lang, b.used, parts.inRound),
     sections: b.sections,
     chartData: parts.chart,
     allRows: b.allRows,
@@ -609,6 +616,61 @@ function resultFrom(
     warnings: parts.warnings,
     compiledAt: new Date().toISOString(),
   };
+}
+
+const RIB_CROWN_STITCHES: StitchType[] = ['rib_1x1', 'rib_2x2', 'fishermans_rib', 'brioche'];
+const crownFlip = (op: StitchOp): StitchOp => (op === 'k' ? 'p' : 'k');
+
+interface RibCrownStep {
+  decrease: StitchOp[];
+  plain: StitchOp[];
+  plainRows: number;
+}
+
+/**
+ * The traditional rib crown: the purl columns are eaten first, so that the ribs run unbroken into
+ * the centre rather than crashing into a few decrease lines. Cast on a multiple of 8. Worked flat,
+ * decreases stay on the right side, so the rows between them must be an odd number.
+ */
+function ribCrownPlan(stitch: StitchType, flat: boolean): RibCrownStep[] {
+  const rest = (rounds: number) => (flat && rounds % 2 === 0 ? rounds - 1 : rounds);
+  if (stitch === 'rib_2x2') {
+    return [
+      { decrease: ['k', 'k', 'p2tog'], plain: ['k', 'k', 'p'], plainRows: rest(4) },
+      { decrease: ['k2tog', 'p'], plain: ['k', 'p'], plainRows: rest(4) },
+      { decrease: ['k2tog'], plain: ['k'], plainRows: 1 },
+      { decrease: ['k2tog'], plain: ['k'], plainRows: 1 },
+      { decrease: ['k2tog'], plain: [], plainRows: 0 },
+    ];
+  }
+  return [
+    { decrease: ['k', 'p', 'k', 'p', 'k2tog', 'p2tog'], plain: ['k', 'p'], plainRows: 3 },
+    { decrease: ['k', 'p', 'k2tog', 'p2tog'], plain: ['k', 'p'], plainRows: 3 },
+    { decrease: ['k2tog', 'p2tog'], plain: ['k', 'p'], plainRows: rest(2) },
+    { decrease: ['k2tog'], plain: ['k'], plainRows: 1 },
+    { decrease: ['k2tog'], plain: [], plainRows: 0 },
+  ];
+}
+
+/** Keeps decreasing only while more than 8 stitches remain. Closing over fewer makes a hard bump. */
+function ribCrownSteps(plan: RibCrownStep[], sts: number): RibCrownStep[] {
+  const steps: RibCrownStep[] = [];
+  let live = sts;
+  for (const step of plan) {
+    if (live <= 8) break;
+    steps.push(step);
+    live = countRow(spreadUnit(step.decrease, live)).produced;
+  }
+  return steps;
+}
+
+/** Lays a repeat across a row, with any stitches left over simply knitted. */
+function spreadUnit(unit: StitchOp[], sts: number): StitchOp[] {
+  const size = countRow(unit).consumed;
+  const out: StitchOp[] = [];
+  for (let i = 0; i < Math.floor(sts / size); i++) out.push(...unit);
+  for (let i = 0; i < sts % size; i++) out.push('k');
+  return out;
 }
 
 /**
@@ -651,19 +713,25 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
 
   const wedges = blueprint.crownWedges && blueprint.crownWedges >= 3 ? Math.round(blueprint.crownWedges) : 4;
   const targetCircumference = Math.max(30, circumferenceCm + easeCm);
-  const divisor = lcm(lcm(spec.repeatSts, brimSpec.repeatSts), wedges * 2);
+  const ribCrown = !topDown && RIB_CROWN_STITCHES.includes(mainStitch);
+  const divisor = ribCrown ? lcm(lcm(spec.repeatSts, brimSpec.repeatSts), 8) : lcm(lcm(spec.repeatSts, brimSpec.repeatSts), wedges * 2);
   const patternSts = roundToMultiple(targetCircumference * stsPerCm, divisor);
   const seamSts = flat ? 2 : 0;
   const castOnSts = patternSts + seamSts;
   const finishedCircumference = Math.round((patternSts / stsPerCm) * 10) / 10;
 
-  const targetBrimHeight = constraints.brimLengthCm ?? Math.round(lengthCm * 0.33 * 10) / 10;
+  // A single-layer brim only needs to reach the ears' edge. Taller looks like a folded one gone wrong.
+  const requestedBrim = constraints.brimLengthCm ?? Math.round(lengthCm * 0.33 * 10) / 10;
+  const targetBrimHeight = hasFolded ? requestedBrim : Math.min(requestedBrim, 4.5);
   const knitBrimHeight = hasFolded ? targetBrimHeight * 2 : targetBrimHeight;
   const brimRows = Math.max(4, Math.round(knitBrimHeight * rowsPerCm));
 
   const wedgeWidth = patternSts / wedges;
   const shapeSteps = wedgeWidth / 2 - 1; // decrease rounds, down to 2 sts per wedge
-  const crownRowsCount = shapeSteps * 2;
+  // Closing over about 8 stitches is fine; going lower makes a hard bump at the top.
+  const finalDecrease = wedges * 2 > 8;
+  const ribSteps = ribCrown ? ribCrownSteps(ribCrownPlan(mainStitch === 'rib_2x2' ? 'rib_2x2' : 'rib_1x1', flat), patternSts) : [];
+  const crownRowsCount = ribCrown ? ribSteps.reduce((acc, step) => acc + 1 + step.plainRows, 0) : shapeSteps * 2;
   const crownHeightCm = crownRowsCount / rowsPerCm;
   const remainingCm = lengthCm - targetBrimHeight - crownHeightCm;
   const bodyRows = Math.max(flat ? 2 : 1, Math.round(remainingCm * rowsPerCm));
@@ -716,6 +784,9 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
   }
 
   const howItsMade: string[] = [];
+  const crownSentence = ribCrown
+    ? t('The crown decreases the purl columns away first, so that the ribs run into the centre.', 'La coronilla disminuye primero las columnas de revés, para que los elásticos lleguen hasta el centro.')
+    : t(`Shaping uses ${wedges} wedges of ${wedgeWidth} stitches each.`, `La forma se da con ${wedges} gajos de ${wedgeWidth} puntos cada uno.`);
   howItsMade.push(
     flat
       ? t(
@@ -734,14 +805,14 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
           'Empieza con pocos puntos en la punta y va creciendo. El puño es lo último que tejés, así que podés probártelo y parar cuando tenga el largo justo.'
         )
       : t(
-          'Starts at the brim and works up toward the top of the head. The crown narrows in wedges and closes like a drawstring.',
-          'Empieza en el puño y sube hacia la coronilla. La punta se angosta en gajos y se cierra como un cordón.'
+          'Starts at the brim and works up toward the top of the head, where the crown narrows and closes like a drawstring.',
+          'Empieza en el puño y sube hacia la coronilla, donde se angosta y se cierra como un cordón.'
         )
   );
   howItsMade.push(
     t(
-      `${brimStitch === mainStitch ? `${capitalized(stitchName)} all over` : `${capitalized(brimName)} on the brim, ${stitchName} on the body`}. Shaping uses ${wedges} wedges of ${wedgeWidth} stitches each.`,
-      `${brimStitch === mainStitch ? `${capitalized(stitchName)} en toda la prenda` : `${capitalized(brimName)} en el puño, ${stitchName} en el cuerpo`}. La forma se da con ${wedges} gajos de ${wedgeWidth} puntos cada uno.`
+      `${brimStitch === mainStitch ? `${capitalized(stitchName)} all over` : `${capitalized(brimName)} on the brim, ${stitchName} on the body`}. ${crownSentence}`,
+      `${brimStitch === mainStitch ? `${capitalized(stitchName)} en toda la prenda` : `${capitalized(brimName)} en el puño, ${stitchName} en el cuerpo`}. ${crownSentence}`
     )
   );
   if (hasFolded) {
@@ -753,18 +824,22 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
     );
   }
 
-  const needleWord = flat
-    ? t(`${needleSizeMm} mm straight needles`, `agujas rectas de ${needleSizeMm} mm`)
-    : t(`${needleSizeMm}mm (US ${needleToUs(needleSizeMm)}) 40cm circular needle`, `agujas circulares de ${needleSizeMm} mm (cable de 40 cm)`);
+  // Rib is worked half a size smaller than the body, so that the brim holds its shape.
+  const ribBrim = brimStitch !== mainStitch && (brimStitch === 'rib_1x1' || brimStitch === 'rib_2x2');
+  const brimNeedle = ribBrim ? Math.max(2, needleSizeMm - 0.5) : needleSizeMm;
+  const needleWordFor = (mm: number) =>
+    flat
+      ? t(`${mm} mm straight needles`, `agujas rectas de ${mm} mm`)
+      : t(`${mm}mm (US ${needleToUs(mm)}) 40cm circular needle`, `agujas circulares de ${mm} mm (cable de 40 cm)`);
+  const needleWord = needleWordFor(needleSizeMm);
+  const brimNeedleWord = needleWordFor(brimNeedle);
 
   const chartRows: ChartRow[] = [];
   let row = 0;
   const unitWord = t(flat ? 'rows' : 'rounds', flat ? 'hileras' : 'vueltas');
 
   const workBrim = (startNote?: string) => {
-    const brimRowsCycle = cycleRows(columns, flat && brimSpec.flatStartsOnWS ? 0 : 0, brimSpec, flat, flat);
-    // In the round, `flat`-only selvedges are skipped by the last argument above.
-    b.work(brimRowsCycle, brimRows, 1, {
+    b.work(cycleRows(columns, topDown ? row : 0, brimSpec, flat, flat), brimRows, 1, {
       note: startNote,
       checkpoint: t(
         `The brim should measure about ${knitBrimHeight.toFixed(1)} cm${hasFolded ? ` before folding, ${targetBrimHeight.toFixed(1)} cm when folded` : ''}. It looks narrower than ${finishedCircumference} cm because rib pulls in: that is correct.`,
@@ -775,7 +850,10 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
   };
 
   const workBody = () => {
-    const start = flat && brimRows % 2 === 1 ? 1 : 0; // keep RS and WS alternating across the change
+    // The row count carries across sections, so that ridges and seed stitch never break, and when
+    // worked flat the right and wrong sides keep alternating over a change of stitch.
+    let start = topDown ? row : brimRows;
+    if (flat && sideOf(true, spec, start) !== b.nextSide()) start += 1;
     row = start;
     b.work(cycleRows(columns, row, spec, flat, flat), bodyRows, 1, {
       checkpoint: topDown
@@ -790,7 +868,7 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
     });
     row += bodyRows;
     for (let i = 0; i < Math.min(4, cycleLength(spec, false) * 2); i++) {
-      chartRows.push(chartRowFromColumns(columns.slice(0, wedgeWidth), i, spec));
+      chartRows.push(chartRowFromColumns(columns.slice(0, ribCrown ? 8 : wedgeWidth), i, spec));
     }
   };
 
@@ -805,8 +883,8 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
     return [first, ...inner, last];
   };
 
-  const increaseWedge = (cols: number[], look: number): StitchOp[] => {
-    const inner = cols.map((col) => opFor(spec.appearance(col, look), 'RS'));
+  const increaseWedge = (cols: number[], look: number, shapingSpec: StitchSpec): StitchOp[] => {
+    const inner = cols.map((col) => opFor(shapingSpec.appearance(col, look), 'RS'));
     return ['m1l', ...inner, 'm1r'];
   };
 
@@ -827,22 +905,38 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
       t(`${hasFolded ? 'Folded cuff' : 'Brim'} in ${brimName} (${brimRows} ${unitWord})`, `${hasFolded ? 'Puño doblado' : 'Puño'} en ${brimName} (${brimRows} ${unitWord})`)
     );
     const coEn = flat
-      ? `Using ${needleWord}, cast on ${castOnSts} sts. The 2 extra stitches are edge stitches for the seam.`
-      : `Using ${needleWord} or DPNs, cast on ${castOnSts} sts using a stretchy cast-on. Place a beginning-of-round marker (BOR) and join in the round, taking care not to twist.`;
+      ? `Using ${brimNeedleWord}, cast on ${castOnSts} sts. The 2 extra stitches are edge stitches for the seam.`
+      : `Using ${brimNeedleWord} or DPNs, cast on ${castOnSts} sts using a stretchy cast-on. Place a beginning-of-round marker (BOR) and join in the round, taking care not to twist.`;
     const coEs = flat
-      ? `Con ${needleWord}, montar ${castOnSts} puntos. Los 2 puntos extra son orillos para la costura.`
-      : `Con ${needleWord} o agujas de doble punta, montar ${castOnSts} puntos de manera elástica. Colocar el marcador de inicio de vuelta (MIV) y unir para tejer en redondo con cuidado de no retorcer los puntos.`;
-    b.castOn(castOnSts, t(coEn, coEs), flat ? ['long_tail_cast_on'] : ['long_tail_cast_on', 'join_round'], t(
+      ? `Con ${brimNeedleWord}, montar ${castOnSts} puntos. Los 2 puntos extra son orillos para la costura.`
+      : `Con ${brimNeedleWord} o agujas de doble punta, montar ${castOnSts} puntos de manera elástica. Colocar el marcador de inicio de vuelta (MIV) y unir para tejer en redondo con cuidado de no retorcer los puntos.`;
+    b.castOn(castOnSts, t(coEn, coEs), flat ? ['long_tail_cast_on', 'two_end_tail'] : ['long_tail_cast_on', 'two_end_tail', 'flat_start_join', 'join_round'], t(
       `Count ${castOnSts} sts. The edge should stretch around the head easily.`,
       `Contá ${castOnSts} puntos. El borde debe estirar fácil alrededor de la cabeza.`
     ));
     workBrim();
 
     b.section('body', t('2. Hat Body', '2. Cuerpo del Gorro'), t(`${stitchName}, straight (${bodyRows} ${unitWord})`, `${stitchName}, recto (${bodyRows} ${unitWord})`));
+    if (ribBrim) {
+      b.prep(t(`Change to ${needleWord}.`, `Cambiá a ${needleWord}.`));
+    }
+    if (mainStitch === 'reverse_stockinette' && !flat) {
+      b.prep(t('This section is all purl. You can turn the hat inside out and knit it instead.', 'Esta parte es todo revés. Podés dar vuelta el gorro y tejerla al derecho.'), { techniques: ['inside_out'] });
+    }
     workBody();
 
-    b.section('crown', t('3. Crown Shaping & Finishing', '3. Disminuciones y Cierre'), t(`${wedges} wedges, ${crownRowsCount + 1} ${unitWord}`, `${wedges} gajos, ${crownRowsCount + 1} ${unitWord}`));
+    b.section(
+      'crown',
+      t('3. Crown Shaping & Finishing', '3. Disminuciones y Cierre'),
+      ribCrown
+        ? t(`Ribs run to the centre, ${crownRowsCount} ${unitWord}`, `Los elásticos llegan al centro, ${crownRowsCount} ${unitWord}`)
+        : t(`${wedges} wedges, ${crownRowsCount + (finalDecrease ? 1 : 0)} ${unitWord}`, `${wedges} gajos, ${crownRowsCount + (finalDecrease ? 1 : 0)} ${unitWord}`)
+    );
     b.prep(
+      t('Before the crown, thread a lifeline through all the stitches, in case you need to rip back.', 'Antes de la coronilla, pasá una hebra de seguridad por todos los puntos, por si tenés que deshacer.'),
+      { techniques: ['lifeline'] }
+    );
+    if (!ribCrown) b.prep(
       flat
         ? t(
             `Place markers to divide the ${patternSts} sts between the edge stitches into ${wedges} wedges of ${wedgeWidth} sts.`,
@@ -855,8 +949,41 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
     );
 
     let crownRow = 1;
-    const usesPurlDec = new Set<string>(['ssk', 'k2tog']);
-    for (let stage = 0; stage < shapeSteps; stage++) {
+    if (ribCrown) {
+      if (mainStitch === 'fishermans_rib' || mainStitch === 'brioche') {
+        b.prep(t('Stop working K1b here and shape in plain K1, P1 rib, because a K1b over a decrease lets stitches run.', 'Dejá de tejer D1A acá y hacé la forma en elástico simple D1, R1, porque un D1A sobre una disminución deja correr los puntos.'));
+      }
+      // A flat piece has to reach the crown with the right side facing.
+      if (flat && b.nextSide() === 'WS') {
+        b.work([rowFor(columns, row, spec, 'WS', true)], 1, crownRow++);
+        row++;
+      }
+      const side: RowSide = flat ? 'RS' : 'round';
+      const edged = (ops: StitchOp[], rowSide: RowSide): WorkedRow => ({ side: rowSide, ops: edge(ops, rowSide) });
+      let live = patternSts;
+      let chartLive = 8;
+      for (const step of ribSteps) {
+        const ops = spreadUnit(step.decrease, live);
+        live = countRow(ops).produced;
+        b.work([edged(ops, side)], 1, crownRow++, {
+          note: t(`(${live} sts remain.)`, `(Quedan ${live} puntos.)`),
+          techniques: [...new Set(step.decrease.filter((op) => op !== 'k' && op !== 'p') as string[])],
+        });
+        const chartOps = spreadUnit(step.decrease, chartLive);
+        chartRows.push({ cells: chartOps.map((op) => ({ op, col: null })) });
+        chartLive = countRow(chartOps).produced;
+        if (step.plainRows > 0) {
+          const plainRs = spreadUnit(step.plain, live);
+          const plainWs = [...plainRs].reverse().map(crownFlip);
+          b.work(flat ? [edged(plainWs, 'WS'), edged(plainRs, 'RS')] : [edged(plainRs, 'round')], step.plainRows, crownRow);
+          crownRow += step.plainRows;
+          for (let i = 0; i < Math.min(step.plainRows, 2); i++) {
+            chartRows.push({ cells: spreadUnit(step.plain, chartLive).map((op) => ({ op, col: null })) });
+          }
+        }
+      }
+    }
+    for (let stage = 0; !ribCrown && stage < shapeSteps; stage++) {
       // Shaping must land on a row where the stitch pattern allows it.
       if (spec.shapingRowParity !== undefined && row % 2 !== spec.shapingRowParity && !flat) {
         const plainRound = rowFor(wedgeCols(stage).flat(), row, spec, 'round', false);
@@ -873,7 +1000,6 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
       }
       const segments = wedgeCols(stage).map((cols) => decreaseWedge(cols, row));
       const ops = edge(withMarkers(segments), decSide);
-      segments[0].forEach((op) => usesPurlDec.add(op));
       const techs = [...new Set(segments[0].filter((op) => op === 'ssk' || op === 'k2tog' || op === 'ssp' || op === 'p2tog') as string[])];
       b.work([{ side: decSide, ops }], 1, crownRow++, {
         note: t(`(${b.sts - wedges * 2} sts remain: ${wedgeCols(stage + 1)[0].length} per wedge.)`, `(Quedan ${b.sts - wedges * 2} puntos: ${wedgeCols(stage + 1)[0].length} por gajo.)`),
@@ -893,16 +1019,18 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
       row++;
     }
 
-    // Last row: every stitch left is decreased, then the hole is drawn closed.
-    if (flat && sideOf(flat, spec, row) === 'WS') {
+    // Last row: with many stitches left they are all decreased once more, then the hole is drawn closed.
+    if (!ribCrown && finalDecrease && flat && sideOf(flat, spec, row) === 'WS') {
       const ws = rowFor(wedgeCols(shapeSteps).flat(), row, spec, 'WS', true);
       b.work([ws], 1, crownRow++);
       row++;
     }
-    const finalSegs = wedgeCols(shapeSteps).map(() => ['k2tog'] as StitchOp[]);
-    const finalOps = edge(withMarkers(finalSegs), flat ? 'RS' : 'round');
-    b.work([{ side: flat ? 'RS' : 'round', ops: finalOps }], 1, crownRow, { techniques: ['k2tog'] });
-    chartRows.push({ cells: [{ op: 'k2tog', col: null }] });
+    if (!ribCrown && finalDecrease) {
+      const finalSegs = wedgeCols(shapeSteps).map(() => ['k2tog'] as StitchOp[]);
+      const finalOps = edge(withMarkers(finalSegs), flat ? 'RS' : 'round');
+      b.work([{ side: flat ? 'RS' : 'round', ops: finalOps }], 1, crownRow, { techniques: ['k2tog'] });
+      chartRows.push({ cells: [{ op: 'k2tog', col: null }] });
+    }
     b.finish(
       flat
         ? t(
@@ -920,6 +1048,8 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
         : undefined
     );
   } else {
+    // A K1b over a new increase has nothing beneath it to catch, so the top is shaped in plain rib.
+    const crownSpec = mainStitch === 'fishermans_rib' || mainStitch === 'brioche' ? STITCHES.rib_1x1 : spec;
     b.section('crown', t('1. Crown: starting at the top', '1. Coronilla: desde la punta'), t(`${wedges} wedges, growing outward`, `${wedges} gajos, creciendo hacia afuera`));
     const startSts = wedges * 2;
     b.castOn(
@@ -933,17 +1063,17 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
     );
     let crownRow = 1;
     for (let stage = shapeSteps; stage > 0; stage--) {
-      const plain = rowFor(wedgeCols(stage).flat(), row, spec, 'round', false);
+      const plain = rowFor(wedgeCols(stage).flat(), row, crownSpec, 'round', false);
       b.work([{ side: 'round', ops: plain.ops }], 1, crownRow++);
-      chartRows.push(chartRowFromColumns(wedgeCols(stage)[0], row, spec));
+      chartRows.push(chartRowFromColumns(wedgeCols(stage)[0], row, crownSpec));
       row++;
-      if (spec.shapingRowParity !== undefined && row % 2 !== spec.shapingRowParity) {
-        const extra = rowFor(wedgeCols(stage).flat(), row, spec, 'round', false);
+      if (crownSpec.shapingRowParity !== undefined && row % 2 !== crownSpec.shapingRowParity) {
+        const extra = rowFor(wedgeCols(stage).flat(), row, crownSpec, 'round', false);
         b.work([{ side: 'round', ops: extra.ops }], 1, crownRow++);
-        chartRows.push(chartRowFromColumns(wedgeCols(stage)[0], row, spec));
+        chartRows.push(chartRowFromColumns(wedgeCols(stage)[0], row, crownSpec));
         row++;
       }
-      const segments = wedgeCols(stage).map((cols) => increaseWedge(cols, row));
+      const segments = wedgeCols(stage).map((cols) => increaseWedge(cols, row, crownSpec));
       b.work([{ side: 'round', ops: withMarkers(segments) }], 1, crownRow++, {
         note: t(`(${wedgeCols(stage - 1)[0].length * wedges} sts now.)`, `(Ahora hay ${wedgeCols(stage - 1)[0].length * wedges} puntos.)`),
         techniques: ['m1l', 'm1r'],
@@ -951,7 +1081,7 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
       chartRows.push({
         cells: [
           { op: 'm1l', col: null },
-          ...wedgeCols(stage)[0].map((col) => ({ op: opFor(spec.appearance(col, row), 'RS'), col })),
+          ...wedgeCols(stage)[0].map((col) => ({ op: opFor(crownSpec.appearance(col, row), 'RS'), col })),
           { op: 'm1r', col: null },
         ],
       });
@@ -961,6 +1091,7 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
     b.prep(t('Remove the wedge markers as you reach them, and keep the BOR marker.', 'Sacá los marcadores de gajos al llegar a ellos y dejá el MIV.'));
     workBody();
     b.section('brim', t('3. Brim & Bind Off', '3. Puño y Cierre'), t(`${brimName} (${brimRows} ${unitWord})`, `${brimName} (${brimRows} ${unitWord})`));
+    if (ribBrim) b.prep(t(`Change to ${brimNeedleWord}.`, `Cambiá a ${brimNeedleWord}.`));
     workBrim();
     b.work([{ side: 'round', ops: columns.map(() => 'bo' as StitchOp) }], 1, brimRows + 1, {
       note: t('Bind off with a stretchy method.', 'Cerrá con un método elástico.'),
@@ -977,15 +1108,17 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
   const materials = es
     ? [
         `${needleWord}`,
+        ...(ribBrim ? [`${brimNeedleWord} para el puño`] : []),
         ...(flat ? [] : [`Juego de agujas de doble punta de ${needleSizeMm} mm para la coronilla (o cable largo para Magic Loop)`]),
-        `${wedges} marcadores de puntos${flat ? '' : ' (1 de color diferente para el inicio de vuelta)'}`,
+        ribCrown ? '1 marcador de inicio de vuelta' : `${wedges} marcadores de puntos${flat ? '' : ' (1 de color diferente para el inicio de vuelta)'}`,
         'Aguja lanera sin punta para rematar',
         'Centímetro de sastre para controlar medidas',
       ]
     : [
         needleWord,
+        ...(ribBrim ? [`${brimNeedleWord} for the brim`] : []),
         ...(flat ? [] : [`${needleSizeMm}mm double-pointed needles or an 80cm circular for Magic Loop at the crown`]),
-        `${wedges} stitch markers${flat ? '' : ' (1 distinct for BOR)'}`,
+        ribCrown ? '1 beginning-of-round marker' : `${wedges} stitch markers${flat ? '' : ' (1 distinct for BOR)'}`,
         'Tapestry needle for weaving ends',
         'Tape measure',
       ];
@@ -1073,17 +1206,17 @@ export function compileCowlPattern(blueprint: KnitBlueprint, constraints: KnitUs
     });
     numberNow += borderRows;
   }
-  const bodyStart = flat && borderRows % 2 === 1 ? 1 : 0;
+  const bodyStart = flat && sideOf(true, spec, borderRows) !== b.nextSide() ? borderRows + 1 : borderRows;
   b.work(cycleRows(columns, bodyStart, spec, flat, flat), bodyRows, numberNow, {
     checkpoint: t(`The piece should measure about ${(lengthCm - (borderRows / rowsPerCm)).toFixed(1)} cm.`, `La pieza debe medir unos ${(lengthCm - (borderRows / rowsPerCm)).toFixed(1)} cm.`),
   });
   numberNow += bodyRows;
   if (borderRows) {
-    const start = flat && (borderRows + bodyRows) % 2 === 1 ? 1 : 0;
+    const start = flat && sideOf(true, borderSpec, 0) !== b.nextSide() ? 1 : 0;
     b.work(cycleRows(columns, start, borderSpec, flat, flat), borderRows, numberNow);
     numberNow += borderRows;
   }
-  b.work([{ side: flat ? 'RS' : 'round', ops: Array.from({ length: castOn }, () => 'bo' as StitchOp) }], 1, numberNow, {
+  b.work([{ side: b.nextSide(), ops: Array.from({ length: castOn }, () => 'bo' as StitchOp) }], 1, numberNow, {
     note: t('Bind off loosely so that the edge still stretches.', 'Cerrá flojo para que el borde siga estirando.'),
     techniques: ['stretchy_bind_off'],
   });
@@ -1120,9 +1253,75 @@ export function compileCowlPattern(blueprint: KnitBlueprint, constraints: KnitUs
   return pattern;
 }
 
+function compileTubeScarf(
+  blueprint: KnitBlueprint,
+  constraints: KnitUserConstraints,
+  stitch: StitchType,
+  warnings: PatternWarning[],
+  widthCm: number,
+  lengthCm: number
+): CompiledPattern {
+  const lang = constraints.language || 'es';
+  const es = lang === 'es';
+  const t: Tr = (en, esText) => (es ? esText : en);
+  const spec = STITCHES[stitch];
+  const stitchName = nameOf(spec, lang);
+  const stsPerCm = constraints.gaugeSts10cm / 10;
+  const castOn = roundToMultiple(widthCm * 2 * stsPerCm, 2);
+  const rows = Math.max(4, Math.round(lengthCm * (constraints.gaugeRows10cm / 10)));
+  const columns = range(castOn);
+  const needle = t(`${constraints.needleSizeMm} mm circular needle, about 40 cm long`, `aguja circular de ${constraints.needleSizeMm} mm, de unos 40 cm`);
+
+  const b = new PatternBuilder(lang, false);
+  b.section('before', t('Before you start', 'Antes de empezar'), t('Swatch and set-up', 'Muestra y preparación'));
+  gaugeStep(b, spec, constraints, lang, t, false);
+  b.section('full-scarf', t('1. The Scarf', '1. La Bufanda'), t(`A tube, ${rows} rounds`, `Un tubo, ${rows} vueltas`));
+  b.castOn(
+    castOn,
+    t(`Using a ${needle}, cast on ${castOn} sts. That is double the width, because the tube is worn flat. Join in the round without twisting and place a marker.`, `Con una ${needle}, montá ${castOn} puntos. Es el doble del ancho, porque el tubo se usa aplastado. Uní en redondo sin retorcer y colocá un marcador.`),
+    ['long_tail_cast_on', 'two_end_tail', 'flat_start_join', 'join_round'],
+    t(`Count ${castOn} sts.`, `Contá ${castOn} puntos.`)
+  );
+  if (stitch === 'reverse_stockinette') {
+    b.prep(t('This is all purl. You can knit the tube with the knit side out, and turn it inside out when you finish.', 'Esto es todo revés. Podés tejer el tubo al derecho y darlo vuelta al terminar.'), { techniques: ['inside_out'] });
+  }
+  b.work(cycleRows(columns, 0, spec, false, false), rows, 1, {
+    checkpoint: t(`Keep going until it is about ${lengthCm} cm long.`, `Seguí hasta que mida unos ${lengthCm} cm.`),
+  });
+  b.work([{ side: 'round', ops: columns.map(() => 'bo' as StitchOp) }], 1, rows + 1, { techniques: ['stretchy_bind_off'] });
+  b.finish(
+    t('Flatten the tube, then sew each end closed. Weave in the ends and block gently.', 'Aplastá el tubo y cosé cada extremo. Escondé las hebras y bloqueá suave.'),
+    0,
+    ['mattress_seam']
+  );
+
+  const chartRows: ChartRow[] = [];
+  const sample = range(8);
+  for (let r = 0; r < 4; r++) chartRows.push(chartRowFromColumns(sample, r, spec));
+  const pattern = resultFrom(b, blueprint, constraints, {
+    title: t(`Scarf in ${stitchName}`, `Bufanda en ${stitchName}`),
+    finished: { circumferenceCm: widthCm, totalLengthCm: lengthCm },
+    castOn,
+    area: widthCm * 2 * lengthCm,
+    materials: es ? [needle, 'Marcador de puntos', 'Aguja lanera sin punta'] : [needle, 'Stitch marker', 'Tapestry needle'],
+    chart: buildChart(chartRows, lang, chartNote(false, t)),
+    howItsMade: [
+      t(
+        `${capitalized(stitchName)} rolls at the edges, and a narrow border will not stop it. So this scarf is a tube, knitted in the round and worn flat. It has no edges to roll, and it is twice as warm.`,
+        `El ${stitchName} se enrolla en los bordes, y un borde angosto no lo evita. Por eso esta bufanda es un tubo, tejido en redondo y usado aplastado. No tiene bordes que se enrollen, y abriga el doble.`
+      ),
+    ],
+    warnings,
+    inRound: true,
+  });
+  const yarn = pattern.yarnEstimates;
+  pattern.materials.unshift(es ? `${yarn.totalGrams} g (${yarn.totalMeters} m) de ${YARN_NAMES_ES[constraints.yarnWeight] || constraints.yarnWeight}` : `${yarn.totalGrams}g (${yarn.totalMeters}m) of ${constraints.yarnWeight} yarn`);
+  return pattern;
+}
+
 /**
- * Flat rectangle, lengthwise. Stitches that curl get a garter frame, because a stockinette scarf
- * rolls into a tube no matter how carefully it is knitted.
+ * Flat rectangle, lengthwise. Stitches that curl are written as a tube instead, because a
+ * stockinette scarf rolls no matter how carefully it is knitted.
  */
 export function compileScarfPattern(blueprint: KnitBlueprint, constraints: KnitUserConstraints): CompiledPattern {
   const lang = constraints.language || 'es';
@@ -1136,27 +1335,20 @@ export function compileScarfPattern(blueprint: KnitBlueprint, constraints: KnitU
   const { stitch } = resolveStitch(blueprint.mainStitch);
   const spec = STITCHES[stitch];
   const warnings = baseWarnings(blueprint, constraints, t);
-  const framed = spec.curls;
-  const borderSts = framed ? 3 : 0;
-  const borderRows = framed ? 6 : 0;
+  // Stockinette rolls no matter what, and a narrow border cannot stop it. The traditional answer is
+  // a tube, which has no edges to roll and is twice as warm.
+  if (spec.curls) return compileTubeScarf(blueprint, constraints, stitch, warnings, targetWidthCm, targetLengthCm);
 
-  const patternSts = roundToMultiple(targetWidthCm * stsPerCm - 2 - borderSts * 2, spec.repeatSts);
-  const castOn = patternSts + 2 + borderSts * 2;
+  const patternSts = roundToMultiple(targetWidthCm * stsPerCm - 2, spec.repeatSts);
+  const castOn = patternSts + 2;
   const totalRows = Math.max(4, Math.round(targetLengthCm * rowsPerCm));
-  const bodyRows = Math.max(2, totalRows - borderRows * 2);
   const stitchName = nameOf(spec, lang);
 
   const scarfRow = (row: number, side: RowSide): WorkedRow => {
     const inner = range(patternSts).map((col) => opFor(spec.appearance(col, row), side));
     const order = side === 'WS' ? [...inner].reverse() : inner;
-    // A knit border on both sides of every row is garter stitch.
-    const frame: StitchOp[] = Array.from({ length: borderSts }, () => 'k');
-    return { side, ops: ['sl1wyif', ...frame, ...order, ...frame, 'k'] };
+    return { side, ops: ['sl1wyif', ...order, 'k'] };
   };
-  const garterRow = (side: RowSide): WorkedRow => ({
-    side,
-    ops: ['sl1wyif', ...Array.from({ length: castOn - 2 }, () => 'k' as StitchOp), 'k'],
-  });
 
   const firstIsWS = spec.flatStartsOnWS === true;
   const body: WorkedRow[] = [];
@@ -1177,23 +1369,12 @@ export function compileScarfPattern(blueprint: KnitBlueprint, constraints: KnitU
     t(`Count ${castOn} sts. The piece should be about ${targetWidthCm} cm wide.`, `Contá ${castOn} puntos. La pieza debe medir unos ${targetWidthCm} cm de ancho.`)
   );
   let numberNow = 1;
-  if (borderRows) {
-    b.work([garterRow('RS'), garterRow('WS')], borderRows, numberNow, {
-      note: t('This frame keeps the scarf from curling.', 'Este marco evita que la bufanda se enrolle.'),
-      techniques: ['chain_selvedge'],
-    });
-    numberNow += borderRows;
-  }
-  b.work(body, bodyRows, numberNow, {
+  b.work(body, totalRows, numberNow, {
     techniques: ['chain_selvedge', ...(body.some((r) => r.ops.includes('k1b')) ? ['k1b'] : [])],
     checkpoint: t(`Keep going until the scarf is about ${targetLengthCm} cm long. Lay it flat to measure, without stretching.`, `Seguí hasta que mida unos ${targetLengthCm} cm. Medila plana, sin estirar.`),
   });
-  numberNow += bodyRows;
-  if (borderRows) {
-    b.work([garterRow('RS'), garterRow('WS')], borderRows, numberNow);
-    numberNow += borderRows;
-  }
-  b.work([{ side: 'RS', ops: Array.from({ length: castOn }, () => 'bo' as StitchOp) }], 1, numberNow, {
+  numberNow += totalRows;
+  b.work([{ side: b.nextSide(), ops: Array.from({ length: castOn }, () => 'bo' as StitchOp) }], 1, numberNow, {
     note: t('Bind off loosely, in pattern.', 'Cerrá flojo, como se presentan.'),
     techniques: ['stretchy_bind_off'],
   });
@@ -1220,9 +1401,7 @@ export function compileScarfPattern(blueprint: KnitBlueprint, constraints: KnitU
         'A flat rectangle worked back and forth from one short end to the other. You turn at the end of every row.',
         'Un rectángulo plano, tejido de ida y vuelta de un extremo corto al otro. Girás al final de cada hilera.'
       ),
-      framed
-        ? t(`${capitalized(stitchName)} curls, so a garter frame runs around all four edges.`, `El ${stitchName} se enrolla, así que un marco de Santa Clara rodea los cuatro bordes.`)
-        : t(`${capitalized(stitchName)} lies flat by itself, so no border is needed.`, `El ${stitchName} queda plano solo, así que no hace falta borde.`),
+      t(`${capitalized(stitchName)} lies flat by itself, so no border is needed.`, `El ${stitchName} queda plano solo, así que no hace falta borde.`),
     ],
     warnings,
     inRound: false,
@@ -1271,7 +1450,7 @@ export function compileSwatchPattern(blueprint: KnitBlueprint, constraints: Knit
   b.work(cycleRows(columns, 0, spec, true, false), rows, 1, {
     checkpoint: t('Compare it with the photo: the texture should look the same.', 'Comparala con la foto: la textura debe verse igual.'),
   });
-  b.work([{ side: 'RS', ops: columns.map(() => 'bo' as StitchOp) }], 1, rows + 1, { techniques: ['stretchy_bind_off'] });
+  b.work([{ side: b.nextSide(), ops: columns.map(() => 'bo' as StitchOp) }], 1, rows + 1, { techniques: ['stretchy_bind_off'] });
   b.finish(
     t('Wash or steam the swatch, dry it flat and measure it. Type your numbers into the gauge box.', 'Lavá o vaporizá la muestra, secala plana y medila. Cargá tus números en el cuadro de tensión.'),
     0,
@@ -1320,6 +1499,7 @@ export function verifyPattern(pattern: CompiledPattern): string[] {
   const problems: string[] = [];
   let live: number | null = null;
   let previousSide: RowSide | null = null;
+  let previousRound: string | null = null;
   for (const step of pattern.allRows) {
     if (step.kind !== 'work' || !step.rows) {
       if (step.stitchCountAfter > 0 && step.techniques?.includes('long_tail_cast_on')) live = step.stitchCountAfter;
@@ -1336,7 +1516,16 @@ export function verifyPattern(pattern: CompiledPattern): string[] {
       if (consumed !== live) {
         problems.push(`Step ${step.stepNumber} row ${i + 1}: uses ${consumed} sts but ${live} are on the needle`);
       }
-      if (previousSide && row.side !== 'round' && previousSide === row.side && !row.ops.every((op) => op === 'bo')) {
+      if (
+        previousRound === row.ops.join() &&
+        row.side === 'round' &&
+        ['garter', 'seed_stitch'].includes(pattern.blueprint.mainStitch) &&
+        !row.ops.every((op) => op === 'bo')
+      ) {
+        problems.push(`Step ${step.stepNumber} row ${i + 1}: same round twice breaks the ${pattern.blueprint.mainStitch} pattern`);
+      }
+      previousRound = row.side === 'round' ? row.ops.join() : null;
+      if (previousSide && row.side !== 'round' && previousSide === row.side) {
         problems.push(`Step ${step.stepNumber} row ${i + 1}: two ${row.side} rows in a row`);
       }
       previousSide = row.side === 'round' ? null : row.side;

@@ -9,7 +9,7 @@ import {
   compileScarfPattern,
   verifyPattern,
 } from './compiler';
-import { STITCHES, countRow, rowToText } from './stitches';
+import { STITCHES, countRow, rowToText, suggestGauge } from './stitches';
 import { ConstructionType, GarmentType, KnitBlueprint, KnitUserConstraints, StitchType } from '../types/knit';
 
 const blueprint = (over: Partial<KnitBlueprint> = {}): KnitBlueprint => ({
@@ -58,7 +58,7 @@ test('Spanish hat uses Argentine terms and correct counts', () => {
   assert.ok(co.includes('montar 96 puntos'));
   assert.ok(co.includes('marcador de inicio de vuelta'));
   const abbr = p.abbreviations.map((a) => a.abbr);
-  assert.ok(abbr.includes('2pjD') && abbr.includes('SS') && abbr.includes('MIV'));
+  assert.ok(abbr.includes('2pjD') && abbr.includes('2pjR') && abbr.includes('MIV'));
 });
 
 test('every stitch, garment, method and gauge knits through the stitch counter cleanly', () => {
@@ -129,10 +129,11 @@ test('stockinette flat flips to purl on the wrong side', () => {
 
 test('rib stays lined up: a knit column never turns purl across the crown', () => {
   const p = compileBeaniePattern(blueprint(), constraints());
-  const dec = p.sections.find((s) => s.id === 'crown')!.instructions.filter((i) => i.rows?.[0].ops.includes('ssk'));
-  assert.ok(dec.length > 5);
-  const text = dec[0].rowTexts![0];
-  assert.ok(text.startsWith('*ssk') && text.includes('k2tog'), text);
+  const dec = p.sections.find((s) => s.id === 'crown')!.instructions.filter((i) => i.rows?.[0].ops.includes('p2tog'));
+  assert.ok(dec.length >= 3);
+  // Purls are eaten first: every knit column stays a knit column right up to the final rounds.
+  assert.ok(dec[0].rows![0].ops.includes('k2tog') && !dec[0].rows![0].ops.includes('ssk'));
+  assert.equal(p.sections.find((s) => s.id === 'crown')!.instructions.at(-1)!.stitchCountAfter, 0);
 });
 
 test('cowl has no crown and scarf measures as a scarf', () => {
@@ -156,20 +157,73 @@ test('a cable swatch is named for the cable, not its plain base', () => {
   assert.equal(p.warnings[0].severity, 'caution');
 });
 
-test('stockinette scarf gets a garter frame so that it does not curl', () => {
+test('a stockinette scarf is a tube, because no narrow border stops it rolling', () => {
   const p = compileScarfPattern(blueprint({ garmentType: 'scarf', mainStitch: 'stockinette' }), constraints({ circumferenceCm: 24, lengthCm: 170 }));
-  const body = p.sections.find((s) => s.id === 'full-scarf')!.instructions.filter((i) => i.kind === 'work');
-  assert.ok(body.length >= 3);
-  assert.ok(body[0].rows![0].ops.slice(1).every((o) => o === 'k'));
+  assert.ok(Math.abs(p.calculatedGauge.castOnSts / 1.8 - 48) < 2, 'cast on double the width');
+  const body = p.sections.find((s) => s.id === 'full-scarf')!.instructions.find((i) => i.kind === 'work')!;
+  assert.equal(body.rows![0].side, 'round');
+  assert.ok(body.rows![0].ops.every((o) => o === 'k'));
+  assert.deepEqual(verifyPattern(p), []);
+});
+
+test('a rib crown runs the ribs to the centre, with the right counts', () => {
+  for (const mainStitch of ['rib_2x2', 'rib_1x1'] as StitchType[]) {
+    const p = compileBeaniePattern(blueprint({ mainStitch }), constraints());
+    assert.equal(p.calculatedGauge.castOnSts, 96);
+    const counts = p.sections.find((s) => s.id === 'crown')!.instructions.filter((i) => i.rows?.[0].ops.some((o) => o.includes('2tog'))).map((i) => i.stitchCountAfter);
+    assert.deepEqual(counts, [72, 48, 24, 12, 6], mainStitch);
+  }
+});
+
+test('no K1b ever lands on a decrease or an increase', () => {
+  for (const construction of ['in_the_round', 'top_down_round', 'bottom_up_flat'] as ConstructionType[]) {
+    const p = compileBeaniePattern(blueprint({ mainStitch: 'fishermans_rib', construction, hasFoldedBrim: false }), constraints());
+    const crown = p.sections.find((s) => s.id === 'crown')!;
+    assert.equal(crown.instructions.some((i) => i.rows?.some((r) => r.ops.includes('k1b'))), false, construction);
+  }
+});
+
+test('ridges and seed stitch do not break between sections', () => {
+  for (const mainStitch of ['garter', 'seed_stitch'] as StitchType[]) {
+    for (const construction of ['in_the_round', 'top_down_round'] as ConstructionType[]) {
+      const p = compileBeaniePattern(blueprint({ mainStitch, construction, hasFoldedBrim: false }), constraints({ gaugeSts10cm: 20, gaugeRows10cm: 25 }));
+      assert.deepEqual(verifyPattern(p), [], `${mainStitch} ${construction}`);
+    }
+  }
+});
+
+test('a rib brim uses a smaller needle than a plain body, and a single brim stays low', () => {
+  const p = compileBeaniePattern(blueprint({ mainStitch: 'stockinette', hasFoldedBrim: false }), constraints({ language: 'en', brimLengthCm: 7.5 }));
+  assert.ok(p.sections.find((s) => s.id === 'brim')!.instructions[0].instruction.includes('4mm'));
+  assert.ok(p.sections.find((s) => s.id === 'body')!.instructions[0].instruction.includes('4.5mm'));
+  assert.equal(p.finishedDimensions.brimCm, 4.5);
+});
+
+test('a bind-off follows on from the row before it', () => {
+  const p = compileScarfPattern(blueprint({ garmentType: 'scarf', mainStitch: 'fishermans_rib' }), constraints({ circumferenceCm: 24, lengthCm: 170 }));
+  assert.deepEqual(verifyPattern(p), []);
+});
+
+test('starting gauges differ by fabric, and the text says a swatch decides', () => {
+  assert.deepEqual(suggestGauge('garter', 18), { sts: 18, rows: 36 });
+  assert.equal(suggestGauge('fishermans_rib', 18).sts, 14.5);
+  assert.deepEqual(suggestGauge('stockinette', 18), { sts: 18, rows: 24 });
+  const garter = compilePattern(blueprint({ mainStitch: 'garter', hasFoldedBrim: false }), constraints({ gaugeSts10cm: 18, gaugeRows10cm: 36 }));
+  const heightCm = garter.calculatedGauge.totalRows / 3.6;
+  assert.ok(heightCm > 18 && heightCm < 26, `height ${heightCm}`);
+  assert.ok(garter.allRows[0].instruction.includes('estimates'));
 });
 
 test('chart cells come from the same stitch data as the written rows', () => {
-  const p = compileBeaniePattern(blueprint({ crownWedges: 4 }), constraints());
-  const flat = p.chartData.cells.flat();
-  assert.ok(flat.some((c) => c.stitchType === 'ssk'));
-  assert.ok(flat.some((c) => c.stitchType === 'k2tog'));
-  assert.ok(flat.some((c) => c.stitchType === 'P'));
-  assert.equal(p.chartData.cols, 96 / 4);
+  const wedge = compileBeaniePattern(blueprint({ crownWedges: 4, mainStitch: 'stockinette' }), constraints());
+  const wedgeCells = wedge.chartData.cells.flat();
+  assert.ok(wedgeCells.some((c) => c.stitchType === 'ssk'));
+  assert.ok(wedgeCells.some((c) => c.stitchType === 'k2tog'));
+  assert.equal(wedge.chartData.cols, wedge.calculatedGauge.castOnSts / 4);
+  const rib = compileBeaniePattern(blueprint({ mainStitch: 'rib_2x2' }), constraints());
+  const ribCells = rib.chartData.cells.flat();
+  assert.ok(ribCells.some((c) => c.stitchType === 'p2tog'));
+  assert.equal(rib.chartData.cols, 8);
 });
 
 test('row text folds repeats and keeps the stitch count', () => {
@@ -181,6 +235,7 @@ test('row text folds repeats and keeps the stitch count', () => {
 test('impossible rows are refused instead of written out', () => {
   // Very bulky gauge: a tiny stitch count must still cast on a valid multiple.
   const p = compileBeaniePattern(blueprint({ mainStitch: 'rib_2x2', crownWedges: 6 }), constraints({ gaugeSts10cm: 8, gaugeRows10cm: 10, circumferenceCm: 42, lengthCm: 16, yarnWeight: 'Super Bulky' }));
-  assert.equal(p.calculatedGauge.castOnSts % 12, 0);
+  assert.equal(p.calculatedGauge.castOnSts % 8, 0);
+  assert.ok(p.sections.find((s) => s.id === 'crown')!.instructions.at(-1)!.instruction.includes(' 8 '), 'closes over 8, not fewer');
   assert.deepEqual(verifyPattern(p), []);
 });
