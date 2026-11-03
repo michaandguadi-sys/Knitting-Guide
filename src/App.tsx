@@ -8,9 +8,11 @@ import { RowTracker } from './components/RowTracker';
 import { SavedProjectsView } from './components/SavedProjectsView';
 import { SettingsView } from './components/SettingsView';
 import { CraftNotesModal } from './components/CraftNotesModal';
-import { YARN_SPECS, compilePattern, sizePresetsFor } from './engine/compiler';
+import { YARN_SPECS, sizePresetsFor } from './engine/compiler';
+import { resolvePattern, sameMeasurements } from './engine/resolvePattern';
+import { suggestGauge } from './engine/stitches';
 import { pickStitchReading, toBlueprint } from './decode/reconcile';
-import { GarmentType, KnitBlueprint, KnitUserConstraints, SavedProject, TrackerPosition } from './types/knit';
+import { CompiledPattern, GarmentType, KnitBlueprint, KnitUserConstraints, SavedProject, TrackerPosition } from './types/knit';
 import { Language } from './i18n/translations';
 import {
   deleteProject,
@@ -34,9 +36,6 @@ const DEFAULT_CONSTRAINTS: KnitUserConstraints = {
   yarnWeight: 'Worsted / Aran',
   language: 'es',
 };
-
-/** Row gauge when only stitches are known: stockinette rows run about 1.33 times the stitches. */
-const rowsFromSts = (sts: number) => Math.round(sts * 1.33 * 2) / 2;
 
 /** Typical gauge for a yarn, the starting point until the knitter has a swatch. */
 const GAUGE_BY_YARN: Record<KnitUserConstraints['yarnWeight'], number> = {
@@ -72,6 +71,8 @@ export default function App() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<Record<number, boolean>>({});
   const [tracker, setTracker] = useState<TrackerPosition>({ stepIndex: 0, rowInStep: 0 });
+  /** The active project's own pattern, which improvements to the app must not rewrite. */
+  const [savedPattern, setSavedPattern] = useState<CompiledPattern | null>(null);
 
   const isEs = lang === 'es';
 
@@ -92,6 +93,7 @@ export default function App() {
     const lastId = getActiveProjectId();
     const last = projects.find((p) => p.id === lastId);
     if (last) {
+      setSavedPattern(last.pattern);
       setBlueprint(last.pattern.blueprint);
       setConstraints(last.pattern.constraints);
       setLang(last.pattern.constraints.language ?? 'es');
@@ -105,24 +107,34 @@ export default function App() {
   const { pattern: compiledPattern, compileError } = useMemo(() => {
     if (!blueprint) return { pattern: null, compileError: null };
     try {
-      return { pattern: compilePattern(blueprint, { ...constraints, language: lang }), compileError: null };
+      return { pattern: resolvePattern(savedPattern, blueprint, constraints, lang), compileError: null };
     } catch (err) {
       console.error('Error compiling pattern:', err);
       return { pattern: null, compileError: (err as Error).message };
     }
-  }, [blueprint, constraints, lang]);
+  }, [blueprint, constraints, lang, savedPattern]);
 
-  // Editing the size or gauge changes the rows, so keep any saved project in step with the screen.
+  // A rebuilt pattern replaces the saved one. New measurements mean new rows, so the place starts
+  // over. A translation has the same steps, so the knitter keeps their place.
   useEffect(() => {
-    if (!compiledPattern || !activeProjectId) return;
+    if (!compiledPattern || !activeProjectId || compiledPattern === savedPattern) return;
     const project = loadSavedProjects().find((p) => p.id === activeProjectId);
-    if (project && JSON.stringify(project.pattern.constraints) !== JSON.stringify(compiledPattern.constraints)) {
-      reportSave(saveProject({ ...project, pattern: compiledPattern, tracker: { stepIndex: 0, rowInStep: 0 }, completedSteps: {} }));
+    if (!project) return;
+    const newRows = !sameMeasurements(project.pattern.constraints, compiledPattern.constraints);
+    reportSave(
+      saveProject(
+        newRows
+          ? { ...project, pattern: compiledPattern, tracker: { stepIndex: 0, rowInStep: 0 }, completedSteps: {} }
+          : { ...project, pattern: compiledPattern }
+      )
+    );
+    if (newRows) {
       setTracker({ stepIndex: 0, rowInStep: 0 });
       setCompletedSteps({});
-      setSavedProjects(loadSavedProjects());
     }
-  }, [compiledPattern, activeProjectId]);
+    setSavedPattern(compiledPattern);
+    setSavedProjects(loadSavedProjects());
+  }, [compiledPattern, activeProjectId, savedPattern]);
 
   const handleToggleLang = () => {
     const nextLang: Language = lang === 'es' ? 'en' : 'es';
@@ -161,10 +173,13 @@ export default function App() {
     };
     reportSave(saveProject(newProj));
     setSavedProjects(loadSavedProjects());
+    setSavedPattern(compiledPattern);
     setActiveProjectId(newProj.id);
   };
 
   const handleLoadProject = (proj: SavedProject) => {
+    setSavedPattern(proj.pattern);
+    setLang(proj.pattern.constraints.language ?? 'es');
     setBlueprint(proj.pattern.blueprint);
     setConstraints(proj.pattern.constraints);
     setCompletedSteps(proj.completedSteps || {});
@@ -176,7 +191,10 @@ export default function App() {
 
   const handleDeleteProject = (id: string) => {
     setSavedProjects(deleteProject(id));
-    if (id === activeProjectId) setActiveProjectId(null);
+    if (id === activeProjectId) {
+      setActiveProjectId(null);
+      setSavedPattern(null);
+    }
   };
 
   const handleUpdateNotes = (id: string, notes: string) => {
@@ -187,16 +205,18 @@ export default function App() {
   const handleApplyDecode = ({ decoded, report, gauge }: DecodeApplied) => {
     const reading = report ? pickStitchReading(report.readings) : null;
     const next = toBlueprint(decoded, reading, lang);
+    setSavedPattern(null);
     setBlueprint(next);
     const yarn = decoded.yarnWeight.value;
-    const sts = gauge?.sts ?? GAUGE_BY_YARN[yarn];
+    // A gauge measured from the picture is already this fabric's. Otherwise estimate it per stitch.
+    const estimate = suggestGauge(next.mainStitch, GAUGE_BY_YARN[yarn]);
     setConstraints((prev) => ({
       ...prev,
       ...sizeFor(next.garmentType, lang),
       yarnWeight: yarn,
       needleSizeMm: decoded.needleMm.value || YARN_SPECS[yarn].defaultNeedle,
-      gaugeSts10cm: sts,
-      gaugeRows10cm: gauge?.rows ?? rowsFromSts(sts),
+      gaugeSts10cm: gauge?.sts ?? estimate.sts,
+      gaugeRows10cm: gauge?.rows ?? estimate.rows,
       language: lang,
     }));
     // A new piece must never inherit the row count of whatever was on the needles before.
@@ -208,6 +228,7 @@ export default function App() {
   };
 
   const handleReset = () => {
+    setSavedPattern(null);
     setBlueprint(null);
     setConstraints(DEFAULT_CONSTRAINTS);
     setCompletedSteps({});

@@ -17,6 +17,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import { STITCHES } from '../engine/stitches';
+import type { Observation } from '../decode/analysis';
 import { DecodeStage, decodePhotos, refineReport } from '../decode/decodePhotos';
 import {
   CONFIRM_BELOW,
@@ -38,7 +39,10 @@ import { Language } from '../i18n/translations';
 import { ColorworkType, GarmentType, StitchType, YarnWeightCategory } from '../types/knit';
 import { EXAMPLE_IMAGE_URL, getAiServices } from '../utils/aiAnalyzer';
 import { PhotoLoadError, encodeJpegBase64, loadPhoto, nextFrame, rasterToDataUrl } from '../vision/browserIO';
+import { FabricReading } from '../vision/pipeline';
 import { QualityIssueCode } from '../vision/quality';
+import { GuidedQuestions } from './GuidedQuestions';
+import { ThinkingPanel } from './ThinkingPanel';
 
 export interface DecodeApplied {
   decoded: Decoded;
@@ -77,6 +81,10 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
   const [focus, setFocus] = useState<PhotoFocus | null>(null);
   const [focusSize, setFocusSize] = useState(0.45);
   const [marks, setMarks] = useState<PhotoMark[]>([]);
+  const [liveReading, setLiveReading] = useState<FabricReading | null>(null);
+  const [observation, setObservation] = useState<Observation | null>(null);
+  const [answeredCount, setAnsweredCount] = useState(0);
+  const [showReading, setShowReading] = useState(false);
   const [correction, setCorrection] = useState('');
   const [isRefining, setIsRefining] = useState(false);
   const [refineError, setRefineError] = useState<string | null>(null);
@@ -187,6 +195,10 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
     setDecoded(null);
     setGauge(null);
     clearCorrections();
+    setLiveReading(null);
+    setObservation(null);
+    setAnsweredCount(0);
+    setShowReading(false);
     try {
       const result = await decodePhotos(inputs, {
         ai: getAiServices(),
@@ -195,6 +207,10 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
         focus: !wholePiece && focus ? { ...focus, size: focusSize } : undefined,
         encodeJpeg: encodeJpegBase64,
         onStage: (s) => setStage(s),
+        onReading: (slot, reading) => {
+          if (slot === 'front') setLiveReading(reading);
+        },
+        onObservation: setObservation,
         yieldToUi: nextFrame,
       });
       setReport(result);
@@ -256,13 +272,6 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
     );
   };
 
-  const stages: { id: string; label: string; icon: React.ReactNode; active: boolean; done: boolean }[] = [
-    { id: 'clean', label: t('Clean the photo', 'Limpiar la foto'), icon: <Scissors className="w-3.5 h-3.5" />, active: stage === 'clean', done: Boolean(report) || stage === 'measure' || stage === 'observe' || stage === 'deduce' },
-    { id: 'reveal', label: t('Reveal the stitches', 'Revelar los puntos'), icon: <Microscope className="w-3.5 h-3.5" />, active: stage === 'measure', done: Boolean(report) || stage === 'observe' || stage === 'deduce' },
-    { id: 'what', label: t('What it is', 'Qué es'), icon: <Sparkles className="w-3.5 h-3.5" />, active: stage === 'observe', done: Boolean(report) || stage === 'deduce' },
-    { id: 'how', label: t('How it was made', 'Cómo se tejió'), icon: <Layers className="w-3.5 h-3.5" />, active: stage === 'deduce', done: Boolean(report) },
-  ];
-
   const issueText = (code: QualityIssueCode, measured: string): { title: string; fix: string } => {
     const map: Record<QualityIssueCode, { title: string; fix: string }> = {
       too_small: {
@@ -309,6 +318,39 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
     <div className="space-y-5">
       {/* Photo set */}
       <section className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-4 sm:p-6 space-y-4">
+        {isBusy && (
+          <ThinkingPanel
+            lang={lang}
+            stage={stage}
+            pictureUrl={photos.front?.url ?? null}
+            reading={liveReading}
+            observation={observation}
+            usesAi={getAiServices().length > 0}
+          />
+        )}
+        {!isBusy && report && photos.front && (
+          <div className="flex items-center gap-3">
+            <img src={photos.front.url} alt={t('Your picture', 'Tu foto')} className="w-14 h-14 rounded-xl object-cover border border-[#E8E3DC]" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-black text-[#1F2421]">{t('Your picture is read', 'Tu foto ya está leída')}</div>
+              <div className="text-xs text-[#6F756F]">{t('Now check it together with me.', 'Ahora la revisamos.')}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setReport(null);
+                setDecoded(null);
+                setGauge(null);
+                clearCorrections();
+              }}
+              className="min-h-[44px] px-3 rounded-xl border border-[#DDD7CD] bg-white text-xs font-bold text-[#4A504A] cursor-pointer flex-shrink-0"
+            >
+              {t('Change picture', 'Cambiar foto')}
+            </button>
+          </div>
+        )}
+        {/* Stays mounted while hidden, because the file inputs live here. */}
+        <div className={isBusy || report ? 'hidden' : 'space-y-4'}>
         <div>
           <h2 className="text-lg sm:text-xl font-black text-[#1F2421]">
             {t('Show me the piece', 'Mostrame la prenda')}
@@ -511,33 +553,202 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
           </button>
         </div>
 
-        {(isBusy || report) && (
-          <ol className="grid grid-cols-2 sm:grid-cols-4 gap-2" aria-label={t('Progress', 'Progreso')}>
-            {stages.map((s) => (
-              <li
-                key={s.id}
-                className={`px-3 py-2 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1.5 border ${
-                  s.done
-                    ? 'bg-[#E4ECE7] text-[#1C3A2B] border-[#C2DEC8]'
-                    : s.active
-                      ? 'bg-amber-50 text-amber-900 border-amber-300'
-                      : 'bg-[#FAF8F5] text-[#8C938C] border-[#E8E3DC]'
-                }`}
-              >
-                {s.done ? <Check className="w-3.5 h-3.5" /> : s.icon}
-                {s.label}
-              </li>
-            ))}
-          </ol>
-        )}
+        </div>
       </section>
 
       {report && <AiBanner ai={report.ai} t={t} onOpenSettings={onOpenSettings} />}
 
+      {decoded && (
+        <>
+          {decoded.inputKind.value === 'crochet' && (
+            <Notice>
+              {t('This looks like crochet, not knitting. A knitting pattern cannot reproduce it, so check this before you go on.', 'Parece crochet, no dos agujas. Un patrón de dos agujas no lo puede reproducir, así que revisalo antes de seguir.')}
+            </Notice>
+          )}
+          {decoded.inputKind.value === 'not_real' && (
+            <Notice>
+              {t('This may be AI-generated or printed, so it may not show real stitches. Treat it as inspiration, because what it shows may not be knittable as pictured.', 'Puede estar generada por IA o ser un estampado, así que quizás no muestra puntos reales. Tomala como inspiración, porque lo que muestra puede no poder tejerse tal como se ve.')}
+            </Notice>
+          )}
+          {decoded.inputKind.value === 'written_or_chart' && (
+            <Notice>
+              {t('This looks like a printed pattern or chart. This app reads knitted fabric, not printed patterns, so the results below will not be reliable.', 'Parece un patrón impreso o un gráfico. Esta app lee tejido, no patrones impresos, así que los resultados de abajo no van a ser confiables.')}
+            </Notice>
+          )}
+
+          {report && frontReading && previews && (
+            <GuidedQuestions
+              lang={lang}
+              questions={questions}
+              answered={answeredCount}
+              reading={frontReading}
+              photoUrl={previews.photo}
+              mapUrl={previews.map}
+              onAnswer={(question, value) => {
+                setDecoded((prev) => (prev ? applyAnswer(prev, question.field, value) : prev));
+                setAnsweredCount((n) => n + 1);
+              }}
+              onUseBestGuess={() =>
+                setDecoded((prev) => {
+                  let next = prev;
+                  for (let round = 0; next && round < 6; round++) {
+                    for (const q of buildQuestions(next, lang)) next = applyAnswer(next, q.field, CANT_TELL);
+                  }
+                  return next;
+                })
+              }
+            />
+          )}
+
+          {!report && questions.length > 0 && (
+            <section className="bg-amber-50 rounded-3xl border border-amber-200 p-4 sm:p-6 space-y-4">
+              {questions.map((q) => (
+                <div key={q.field} className="space-y-2">
+                  <div className="text-sm font-bold text-[#1F2421]">{q.prompt}</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {q.options.filter((o) => o.value !== CANT_TELL).map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setDecoded((prev) => (prev ? applyAnswer(prev, q.field, option.value) : prev))}
+                        className="text-left min-h-[48px] p-2.5 rounded-xl bg-white border border-amber-200 hover:border-[#2D5A43] cursor-pointer"
+                      >
+                        <span className="block text-xs font-bold text-[#1F2421]">{option.label}</span>
+                        {option.hint && <span className="block text-[11px] leading-snug text-[#6F756F]">{option.hint}</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
+
+          {report && questions.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={showReading}
+              onClick={() => setShowReading((v) => !v)}
+              className="w-full min-h-[44px] rounded-2xl border border-[#DDD7CD] bg-white text-xs font-bold text-[#2D5A43] cursor-pointer"
+            >
+              {showReading ? t('Hide what it has read', 'Ocultar lo que leyó') : t('See what it has read so far', 'Ver lo que leyó hasta ahora')}
+            </button>
+          )}
+
+          <div className={!report || questions.length === 0 || showReading ? 'space-y-5' : 'hidden'}>
+          {/* Stage 3: what it is */}
+          <section className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-4 sm:p-6 space-y-3">
+            <StageTitle n={1} title={t('What it is', 'Qué es')} subtitle={t('Change anything that looks wrong. You can see the real piece, and your answer wins.', 'Cambiá lo que no esté bien. Vos ves la prenda real, y tu respuesta manda.')} />
+            <FindingRow label={t('Piece', 'Prenda')} finding={decoded.garment} t={t}>
+              <select value={decoded.garment.value} onChange={(e) => setField('garment', e.target.value as GarmentType)} className={selectClass} aria-label={t('Piece', 'Prenda')}>
+                <option value="beanie">{t('Hat', 'Gorro')}</option>
+                <option value="scarf">{t('Scarf', 'Bufanda')}</option>
+                <option value="cowl">{t('Cowl', 'Cuello')}</option>
+                <option value="pullover">{t('Sweater', 'Pulóver')}</option>
+                <option value="cardigan">{t('Cardigan', 'Saco')}</option>
+                <option value="swatch">{t('Just fabric', 'Solo tejido')}</option>
+                <option value="other">{t('Something else', 'Otra cosa')}</option>
+              </select>
+            </FindingRow>
+            <FindingRow label={t('Main stitch', 'Punto principal')} finding={decoded.stitch} t={t} hint={stitchHint(decoded.stitch.value, lang)}>
+              <select value={decoded.stitch.value} onChange={(e) => setField('stitch', e.target.value as StitchType)} className={selectClass} aria-label={t('Main stitch', 'Punto principal')}>
+                {STITCH_VALUES.map((s) => (
+                  <option key={s} value={s}>{stitchLabel(s)}</option>
+                ))}
+              </select>
+            </FindingRow>
+            <FindingRow label={t('Brim or edge stitch', 'Punto del puño o borde')} finding={decoded.edgeStitch} t={t}>
+              <select value={decoded.edgeStitch.value} onChange={(e) => setField('edgeStitch', e.target.value as StitchType | 'same')} className={selectClass} aria-label={t('Brim or edge stitch', 'Punto del puño o borde')}>
+                <option value="same">{t('Same as main', 'Igual al principal')}</option>
+                {STITCH_VALUES.filter((s) => STITCHES[s].compilable).map((s) => (
+                  <option key={s} value={s}>{stitchLabel(s)}</option>
+                ))}
+              </select>
+            </FindingRow>
+            <FindingRow label={t('Colours', 'Colores')} finding={decoded.colorwork} t={t}>
+              <select value={decoded.colorwork.value} onChange={(e) => setField('colorwork', e.target.value as ColorworkType)} className={selectClass} aria-label={t('Colours', 'Colores')}>
+                <option value="solid">{t('One colour', 'Un color')}</option>
+                <option value="vertical_stripes">{t('Vertical stripes', 'Rayas verticales')}</option>
+                <option value="horizontal_stripes">{t('Horizontal stripes', 'Rayas horizontales')}</option>
+                <option value="color_block">{t('Colour blocks', 'Bloques de color')}</option>
+                <option value="stranded_motif">{t('Motif (Fair Isle or similar)', 'Motivo (Fair Isle o similar)')}</option>
+                <option value="variegated">{t('Multicolour yarn', 'Lana matizada')}</option>
+              </select>
+            </FindingRow>
+            <FindingRow label={t('Made by', 'Hecho')} finding={decoded.madeBy} t={t}>
+              <select value={decoded.madeBy.value} onChange={(e) => setField('madeBy', e.target.value as Decoded['madeBy']['value'])} className={selectClass} aria-label={t('Made by', 'Hecho')}>
+                <option value="unknown">{t('Not sure', 'No sé')}</option>
+                <option value="hand">{t('By hand', 'A mano')}</option>
+                <option value="machine">{t('By machine', 'A máquina')}</option>
+              </select>
+            </FindingRow>
+          </section>
+
+          {/* Stage 4: how it was made */}
+          <section className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-4 sm:p-6 space-y-3">
+            <StageTitle n={2} title={t('How it was made', 'Cómo se tejió')} subtitle={t('Which way it grew, and which side faced the knitter.', 'Hacia dónde creció, y qué lado miraba quien tejía.')} />
+            {methodMatters(decoded.garment.value) && (
+            <FindingRow
+              label={t('Method', 'Método')}
+              finding={decoded.method}
+              t={t}
+              hint={
+                decoded.method.value === 'round'
+                  ? t('You always see the right side, so a knit stitch is always a knit stitch.', 'Siempre ves el derecho, así que un punto al derecho siempre se teje al derecho.')
+                  : t('You turn each row. On the wrong side you make the opposite stitch to get the same look.', 'Girás en cada hilera. Del revés hacés el punto contrario para lograr lo mismo.')
+              }
+            >
+              <select value={decoded.method.value} onChange={(e) => setField('method', e.target.value as Decoded['method']['value'])} className={selectClass} aria-label={t('Method', 'Método')}>
+                <option value="round">{t('In the round, no seam', 'En redondo, sin costura')}</option>
+                <option value="flat">{t('Flat, with a seam or edges', 'Plano, con costura o bordes')}</option>
+              </select>
+            </FindingRow>
+            )}
+            {decoded.garment.value === 'beanie' && decoded.method.value === 'round' && (
+              <FindingRow label={t('Starts at', 'Empieza en')} finding={decoded.direction} t={t}>
+                <select value={decoded.direction.value === 'top_down' ? 'top_down' : 'bottom_up'} onChange={(e) => setField('direction', e.target.value as Decoded['direction']['value'])} className={selectClass} aria-label={t('Starts at', 'Empieza en')}>
+                  <option value="bottom_up">{t('The brim, works up', 'El puño, sube')}</option>
+                  <option value="top_down">{t('The top, works down', 'La punta, baja')}</option>
+                </select>
+              </FindingRow>
+            )}
+            {decoded.garment.value === 'beanie' && (
+              <>
+                <FindingRow label={t('Folded brim', 'Puño doblado')} finding={decoded.foldedBrim} t={t}>
+                  <select value={String(decoded.foldedBrim.value)} onChange={(e) => setField('foldedBrim', e.target.value === 'true')} className={selectClass} aria-label={t('Folded brim', 'Puño doblado')}>
+                    <option value="true">{t('Yes', 'Sí')}</option>
+                    <option value="false">{t('No', 'No')}</option>
+                  </select>
+                </FindingRow>
+                <FindingRow label={t('Crown shaping', 'Forma de la coronilla')} finding={decoded.crownWedges} t={t}>
+                  <select value={String(decoded.crownWedges.value ?? 'ribs')} onChange={(e) => setField('crownWedges', e.target.value === 'ribs' ? null : parseInt(e.target.value, 10))} className={selectClass} aria-label={t('Crown shaping', 'Forma de la coronilla')}>
+                    <option value="ribs">{t('No lines: ribs to the centre', 'Sin líneas: elásticos al centro')}</option>
+                    {[4, 5, 6, 8].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </FindingRow>
+              </>
+            )}
+            <FindingRow label={t('Yarn weight', 'Grosor de lana')} finding={decoded.yarnWeight} t={t}>
+              <select value={decoded.yarnWeight.value} onChange={(e) => setField('yarnWeight', e.target.value as YarnWeightCategory)} className={selectClass} aria-label={t('Yarn weight', 'Grosor de lana')}>
+                {(['Fingering / 4-ply', 'Sport', 'DK / Light Worsted', 'Worsted / Aran', 'Chunky / Bulky', 'Super Bulky'] as YarnWeightCategory[]).map((w) => (
+                  <option key={w} value={w}>{w}</option>
+                ))}
+              </select>
+            </FindingRow>
+            {decoded.notes.length > 0 && (
+              <ul className="text-xs text-[#4A504A] space-y-1 list-disc list-inside">
+                {decoded.notes.map((n, i) => (
+                  <li key={i}>{n}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+
       {/* Stage 1 and 2: clean and reveal */}
       {report && previews && frontReading && (
         <section className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-4 sm:p-6 space-y-4">
-          <StageTitle n={1} title={t('Clean and reveal', 'Limpiar y revelar')} subtitle={t('The surface is removed, the light evened out and the stitch structure pulled forward. Compare with your photo.', 'Se quita la superficie, se empareja la luz y se resalta la estructura de los puntos. Comparala con tu foto.')} />
+          <StageTitle n={3} title={t('Clean and reveal', 'Limpiar y revelar')} subtitle={t('The surface is removed, the light evened out and the stitch structure pulled forward. Compare with your photo.', 'Se quita la superficie, se empareja la luz y se resalta la estructura de los puntos. Comparala con tu foto.')} />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             <div className="space-y-2">
               <div className="flex gap-1 bg-[#FAF8F5] p-1 rounded-xl border border-[#E8E3DC]" role="tablist">
@@ -658,63 +869,6 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
         </section>
       )}
 
-      {decoded && (
-        <>
-          {decoded.inputKind.value === 'crochet' && (
-            <Notice>
-              {t('This looks like crochet, not knitting. A knitting pattern cannot reproduce it, so check this before you go on.', 'Parece crochet, no dos agujas. Un patrón de dos agujas no lo puede reproducir, así que revisalo antes de seguir.')}
-            </Notice>
-          )}
-          {decoded.inputKind.value === 'written_or_chart' && (
-            <Notice>
-              {t('This looks like a printed pattern or chart. This app reads knitted fabric, not printed patterns, so the results below will not be reliable.', 'Parece un patrón impreso o un gráfico. Esta app lee tejido, no patrones impresos, así que los resultados de abajo no van a ser confiables.')}
-            </Notice>
-          )}
-
-          {/* Questions */}
-          {questions.length > 0 && (
-            <section className="bg-amber-50 rounded-3xl border border-amber-200 p-4 sm:p-6 space-y-4">
-              <div>
-                <h3 className="text-base sm:text-lg font-black text-[#1F2421]">
-                  {t(`I need your eyes on ${questions.length === 1 ? 'one thing' : `${questions.length} things`}`, questions.length === 1 ? 'Necesito que mires una cosa' : `Necesito que mires ${questions.length} cosas`)}
-                </h3>
-                <p className="text-xs text-[#6F756F]">
-                  {t('I would rather ask than give you a wrong pattern. If you only have the picture, I can go with the most likely answers.', 'Prefiero preguntar antes que darte un patrón equivocado. Si solo tenés la foto, puedo elegir lo más probable.')}
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDecoded((prev) => (prev ? questions.reduce((acc, q) => applyAnswer(acc, q.field, CANT_TELL), prev) : prev))
-                  }
-                  className="mt-2 min-h-[44px] px-3 rounded-xl bg-white border border-amber-300 text-xs font-bold text-amber-900 cursor-pointer"
-                >
-                  {t('I only have the picture: use the most likely answers', 'Solo tengo la foto: usá lo más probable')}
-                </button>
-              </div>
-              {questions.map((q) => (
-                <div key={q.field} className="space-y-2">
-                  <div>
-                    <div className="text-sm font-bold text-[#1F2421]">{q.prompt}</div>
-                    <p className="text-[11px] text-[#6F756F]">{q.why}</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {q.options.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setDecoded((prev) => (prev ? applyAnswer(prev, q.field, option.value) : prev))}
-                        className="text-left min-h-[48px] p-2.5 rounded-xl bg-white border border-amber-200 hover:border-[#2D5A43] cursor-pointer active:scale-[0.98] touch-manipulation"
-                      >
-                        <span className="block text-xs font-bold text-[#1F2421]">{option.label}</span>
-                        {option.hint && <span className="block text-[11px] leading-snug text-[#6F756F]">{option.hint}</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </section>
-          )}
-
           {report && (
             <section className="bg-white rounded-3xl border-2 border-[#C2DEC8] shadow-xs p-4 sm:p-6 space-y-3">
               <div>
@@ -825,114 +979,7 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
             </div>
           )}
 
-          {/* Stage 3: what it is */}
-          <section className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-4 sm:p-6 space-y-3">
-            <StageTitle n={2} title={t('What it is', 'Qué es')} subtitle={t('Change anything that looks wrong. You can see the real piece, and your answer wins.', 'Cambiá lo que no esté bien. Vos ves la prenda real, y tu respuesta manda.')} />
-            <FindingRow label={t('Piece', 'Prenda')} finding={decoded.garment} t={t}>
-              <select value={decoded.garment.value} onChange={(e) => setField('garment', e.target.value as GarmentType)} className={selectClass} aria-label={t('Piece', 'Prenda')}>
-                <option value="beanie">{t('Hat', 'Gorro')}</option>
-                <option value="scarf">{t('Scarf', 'Bufanda')}</option>
-                <option value="cowl">{t('Cowl', 'Cuello')}</option>
-                <option value="pullover">{t('Sweater', 'Pulóver')}</option>
-                <option value="cardigan">{t('Cardigan', 'Saco')}</option>
-                <option value="swatch">{t('Just fabric', 'Solo tejido')}</option>
-                <option value="other">{t('Something else', 'Otra cosa')}</option>
-              </select>
-            </FindingRow>
-            <FindingRow label={t('Main stitch', 'Punto principal')} finding={decoded.stitch} t={t} hint={stitchHint(decoded.stitch.value, lang)}>
-              <select value={decoded.stitch.value} onChange={(e) => setField('stitch', e.target.value as StitchType)} className={selectClass} aria-label={t('Main stitch', 'Punto principal')}>
-                {STITCH_VALUES.map((s) => (
-                  <option key={s} value={s}>{stitchLabel(s)}</option>
-                ))}
-              </select>
-            </FindingRow>
-            <FindingRow label={t('Brim or edge stitch', 'Punto del puño o borde')} finding={decoded.edgeStitch} t={t}>
-              <select value={decoded.edgeStitch.value} onChange={(e) => setField('edgeStitch', e.target.value as StitchType | 'same')} className={selectClass} aria-label={t('Brim or edge stitch', 'Punto del puño o borde')}>
-                <option value="same">{t('Same as main', 'Igual al principal')}</option>
-                {STITCH_VALUES.filter((s) => STITCHES[s].compilable).map((s) => (
-                  <option key={s} value={s}>{stitchLabel(s)}</option>
-                ))}
-              </select>
-            </FindingRow>
-            <FindingRow label={t('Colours', 'Colores')} finding={decoded.colorwork} t={t}>
-              <select value={decoded.colorwork.value} onChange={(e) => setField('colorwork', e.target.value as ColorworkType)} className={selectClass} aria-label={t('Colours', 'Colores')}>
-                <option value="solid">{t('One colour', 'Un color')}</option>
-                <option value="vertical_stripes">{t('Vertical stripes', 'Rayas verticales')}</option>
-                <option value="horizontal_stripes">{t('Horizontal stripes', 'Rayas horizontales')}</option>
-                <option value="color_block">{t('Colour blocks', 'Bloques de color')}</option>
-                <option value="stranded_motif">{t('Motif (Fair Isle or similar)', 'Motivo (Fair Isle o similar)')}</option>
-                <option value="variegated">{t('Multicolour yarn', 'Lana matizada')}</option>
-              </select>
-            </FindingRow>
-            <FindingRow label={t('Made by', 'Hecho')} finding={decoded.madeBy} t={t}>
-              <select value={decoded.madeBy.value} onChange={(e) => setField('madeBy', e.target.value as Decoded['madeBy']['value'])} className={selectClass} aria-label={t('Made by', 'Hecho')}>
-                <option value="unknown">{t('Not sure', 'No sé')}</option>
-                <option value="hand">{t('By hand', 'A mano')}</option>
-                <option value="machine">{t('By machine', 'A máquina')}</option>
-              </select>
-            </FindingRow>
-          </section>
-
-          {/* Stage 4: how it was made */}
-          <section className="bg-white rounded-3xl border border-[#E8E3DC] shadow-xs p-4 sm:p-6 space-y-3">
-            <StageTitle n={3} title={t('How it was made', 'Cómo se tejió')} subtitle={t('Which way it grew, and which side faced the knitter.', 'Hacia dónde creció, y qué lado miraba quien tejía.')} />
-            {methodMatters(decoded.garment.value) && (
-            <FindingRow
-              label={t('Method', 'Método')}
-              finding={decoded.method}
-              t={t}
-              hint={
-                decoded.method.value === 'round'
-                  ? t('You always see the right side, so a knit stitch is always a knit stitch.', 'Siempre ves el derecho, así que un punto al derecho siempre se teje al derecho.')
-                  : t('You turn each row. On the wrong side you make the opposite stitch to get the same look.', 'Girás en cada hilera. Del revés hacés el punto contrario para lograr lo mismo.')
-              }
-            >
-              <select value={decoded.method.value} onChange={(e) => setField('method', e.target.value as Decoded['method']['value'])} className={selectClass} aria-label={t('Method', 'Método')}>
-                <option value="round">{t('In the round, no seam', 'En redondo, sin costura')}</option>
-                <option value="flat">{t('Flat, with a seam or edges', 'Plano, con costura o bordes')}</option>
-              </select>
-            </FindingRow>
-            )}
-            {decoded.garment.value === 'beanie' && decoded.method.value === 'round' && (
-              <FindingRow label={t('Starts at', 'Empieza en')} finding={decoded.direction} t={t}>
-                <select value={decoded.direction.value === 'top_down' ? 'top_down' : 'bottom_up'} onChange={(e) => setField('direction', e.target.value as Decoded['direction']['value'])} className={selectClass} aria-label={t('Starts at', 'Empieza en')}>
-                  <option value="bottom_up">{t('The brim, works up', 'El puño, sube')}</option>
-                  <option value="top_down">{t('The top, works down', 'La punta, baja')}</option>
-                </select>
-              </FindingRow>
-            )}
-            {decoded.garment.value === 'beanie' && (
-              <>
-                <FindingRow label={t('Folded brim', 'Puño doblado')} finding={decoded.foldedBrim} t={t}>
-                  <select value={String(decoded.foldedBrim.value)} onChange={(e) => setField('foldedBrim', e.target.value === 'true')} className={selectClass} aria-label={t('Folded brim', 'Puño doblado')}>
-                    <option value="true">{t('Yes', 'Sí')}</option>
-                    <option value="false">{t('No', 'No')}</option>
-                  </select>
-                </FindingRow>
-                <FindingRow label={t('Crown wedges', 'Gajos de la coronilla')} finding={decoded.crownWedges} t={t}>
-                  <select value={String(decoded.crownWedges.value ?? 4)} onChange={(e) => setField('crownWedges', parseInt(e.target.value, 10))} className={selectClass} aria-label={t('Crown wedges', 'Gajos de la coronilla')}>
-                    {[4, 5, 6, 8].map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </FindingRow>
-              </>
-            )}
-            <FindingRow label={t('Yarn weight', 'Grosor de lana')} finding={decoded.yarnWeight} t={t}>
-              <select value={decoded.yarnWeight.value} onChange={(e) => setField('yarnWeight', e.target.value as YarnWeightCategory)} className={selectClass} aria-label={t('Yarn weight', 'Grosor de lana')}>
-                {(['Fingering / 4-ply', 'Sport', 'DK / Light Worsted', 'Worsted / Aran', 'Chunky / Bulky', 'Super Bulky'] as YarnWeightCategory[]).map((w) => (
-                  <option key={w} value={w}>{w}</option>
-                ))}
-              </select>
-            </FindingRow>
-            {decoded.notes.length > 0 && (
-              <ul className="text-xs text-[#4A504A] space-y-1 list-disc list-inside">
-                {decoded.notes.map((n, i) => (
-                  <li key={i}>{n}</li>
-                ))}
-              </ul>
-            )}
-          </section>
+          </div>
 
           <div>
             <button

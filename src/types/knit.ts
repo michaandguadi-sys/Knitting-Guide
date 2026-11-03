@@ -59,6 +59,8 @@ export interface KnitBlueprint {
   hasFoldedBrim?: boolean;
   brimHeightRatio?: number;
   crownWedges?: number;
+  /** `wedges` keeps visible decrease lines. Otherwise a rib's columns run to the centre. */
+  crownStyle?: 'ribs' | 'wedges';
   colorworkType: ColorworkType;
   stripes?: StripeDefinition[];
   features: string[];

@@ -13,7 +13,7 @@ One picture is enough, including a saved one from Pinterest. You don't need the 
 3. **Measure.** Finds the stitch and row size, the texture (columns, ridges, Vs, bumps), the yarn colours and how they are laid out.
 4. **Identify.** Claude first writes down only what it can see, then reasons from that record using knitters' rules. Results are checked against the measurements, and disagreements are flagged.
 5. **How it was made.** Round or flat, bottom-up or top-down, folded brim, crown wedges, hand or machine. Each result shows its evidence and how sure the app is.
-6. **Ask and correct.** Anything uncertain becomes a plain question, and "I only have the picture" keeps the most likely answer. If something looks wrong, write a note or tap the spot on the picture, and Claude looks again. A claim that the picture clearly contradicts gets a reasoned reply, not blind agreement.
+6. **Ask and correct.** While it works, the screen shows what has really been found so far. Anything uncertain then becomes one plain question at a time, next to the picture with the place to look marked, and "I can't tell from the picture" keeps the most likely answer. It can ask how the crown closes, whether the piece looks handmade, how the colours are arranged and how many stitches fit across a finger, which sets the yarn and needle. If something looks wrong, write a note or tap the spot on the picture, and Claude looks again. A claim that the picture clearly contradicts gets a reasoned reply, not blind agreement.
 
 Nothing is invented. Without a key the app says it only has measurements and asks more. If the AI call fails, the app tells you why.
 
@@ -22,7 +22,8 @@ Nothing is invented. Without a key the app says it only has measurements and ask
 Every row is generated stitch by stitch, so the written text, the chart and the row counter all come from the same data.
 
 - **Worked in the round or flat.** Wrong-side rows are the true mirror of the right side, so garter in the round alternates knit and purl rounds, while flat garter is knit every row.
-- **Hats** bottom-up or top-down, in the round or flat with a seam. **Cowls** and **scarves** in their own shapes. A stitch that curls gets a border.
+- **Hats** bottom-up or top-down, in the round or flat with a seam. **Cowls** and **scarves** in their own shapes. A rib hat's crown decreases the purl columns first so that the ribs run into the centre, unless you say the picture shows lines of decreases, and a rib brim uses a needle half a size smaller. A stockinette scarf is written as a tube, because a narrow border does not stop it rolling.
+- **Starting gauges differ by fabric**, for example many more rows for garter. They are labelled as estimates, and your swatch decides.
 - **Sweaters and cardigans** are decoded, but only a test swatch is written. The app says so instead of passing off a hat as a sweater.
 - **Cables, lace, motifs, sweaters and selected parts** also get steps written by the AI from the picture. These are clearly marked: they have not been through the stitch check, and numbers can be estimates.
 - **A swatch comes first**, and a measured width turns the stitch count in the photo into a real gauge.
@@ -55,7 +56,7 @@ Results on 14 labelled photos from Wikimedia Commons, one picture each:
 | Measurements only | 6 | 4 | 4 |
 | Claude Opus 5.5 | 13 | 1 (wrong, flagged as unsure) | 0 |
 
-A hat counts as right when its body or its brim matches the label. The prompts were adjusted after a first run on these same photos, so these numbers may be somewhat optimistic for new pictures. The set is small and is not a statistical accuracy figure. Five of these pictures were also read correctly at 474 px wide, the size of a small Pinterest pin. A decode costs about 10 US cents and takes about 40 seconds.
+A hat counts as right when its body or its brim matches the label. The prompts were adjusted after a first run on these same photos, so these numbers may be somewhat optimistic for new pictures. The set is small and is not a statistical accuracy figure. Five of these pictures were also read correctly at 474 px wide, the size of a small Pinterest pin. A decode costs about 12 US cents and takes about 45 seconds. These counts were repeated after adding expert reading rules, with the same result.
 
 ## Privacy
 

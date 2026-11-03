@@ -23,7 +23,7 @@ export interface Finding<T> {
   alternatives?: T[];
 }
 
-export type InputKind = 'knitted_item' | 'crochet' | 'woven_or_other' | 'written_or_chart' | 'unclear';
+export type InputKind = 'knitted_item' | 'crochet' | 'woven_or_other' | 'written_or_chart' | 'not_real' | 'unclear';
 export type WorkMethod = 'round' | 'flat' | 'unknown';
 export type WorkDirection = 'bottom_up' | 'top_down' | 'side_to_side' | 'unknown';
 export type ColorworkTechnique = 'none' | 'stripes' | 'stranded' | 'intarsia' | 'variegated_yarn' | 'unknown';
@@ -71,7 +71,7 @@ export interface PhotoMark {
 /** Answer meaning "I cannot tell from my picture": the best guess is kept and not asked again. */
 export const CANT_TELL = '__cant_tell';
 
-export type QuestionField = 'stitch' | 'method' | 'direction' | 'foldedBrim' | 'garment' | 'madeBy' | 'crownWedges';
+export type QuestionField = 'stitch' | 'edgeStitch' | 'method' | 'direction' | 'foldedBrim' | 'garment' | 'madeBy' | 'crownWedges' | 'colorwork' | 'yarnWeight';
 
 export interface QuestionOption {
   value: string;
@@ -83,6 +83,8 @@ export interface QuestionOption {
 export interface DecodeQuestion {
   field: QuestionField;
   prompt: string;
+  /** What to look at in the picture to answer it. */
+  where: string;
   options: QuestionOption[];
   why: string;
 }

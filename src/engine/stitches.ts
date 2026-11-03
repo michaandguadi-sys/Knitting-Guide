@@ -19,6 +19,8 @@ export interface StitchSpec {
   flatStartsOnWS?: boolean;
   /** Yarn use compared with stockinette. */
   yarnFactor: number;
+  /** Starting estimate of this fabric's gauge relative to stockinette at the same needle. */
+  gaugeFactor: { sts: number; rows: number };
   /** Rows taller or shorter than stockinette at the same needle. */
   gaugeNote: { en: string; es: string };
   name: { en: string; es: string };
@@ -37,6 +39,7 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     curls: true,
     reversible: false,
     yarnFactor: 1,
+    gaugeFactor: { sts: 1, rows: 1 },
     gaugeNote: {
       en: 'The reference fabric: most ball-band gauges are measured in it.',
       es: 'Es el tejido de referencia: casi todas las etiquetas miden la muestra en este punto.',
@@ -51,6 +54,7 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     curls: true,
     reversible: false,
     yarnFactor: 1,
+    gaugeFactor: { sts: 1, rows: 1 },
     gaugeNote: {
       en: 'Same gauge as stockinette: it is the same fabric seen from the back.',
       es: 'Misma muestra que el jersey: es el mismo tejido visto del revés.',
@@ -66,9 +70,10 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     reversible: true,
     shapingRowParity: 0,
     yarnFactor: 1.15,
+    gaugeFactor: { sts: 1, rows: 1.5 },
     gaugeNote: {
-      en: 'Rows pack tightly: about twice as many rows per cm as stitches.',
-      es: 'Las vueltas quedan muy juntas: cerca del doble de vueltas por cm que de puntos.',
+      en: 'Rows pack tightly: expect about twice as many rows as stitches in the same length. Count ridges and double them.',
+      es: 'Las vueltas quedan muy juntas: esperá cerca del doble de vueltas que de puntos en el mismo largo. Contá los relieves y multiplicá por dos.',
     },
     name: { en: 'Garter stitch', es: 'Punto Santa Clara' },
     compilable: true,
@@ -80,6 +85,7 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     curls: false,
     reversible: true,
     yarnFactor: 1.2,
+    gaugeFactor: { sts: 1, rows: 1.15 },
     gaugeNote: {
       en: 'Pulls in by itself: measure the swatch relaxed, or it will look looser than it knits.',
       es: 'Se cierra sola: medí la muestra sin estirar, si no parece más floja de lo que queda.',
@@ -94,6 +100,7 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     curls: false,
     reversible: true,
     yarnFactor: 1.25,
+    gaugeFactor: { sts: 1, rows: 1.15 },
     gaugeNote: {
       en: 'Pulls in more than 1x1: measure the swatch relaxed.',
       es: 'Se cierra más que el 1x1: medí la muestra sin estirar.',
@@ -108,6 +115,7 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     curls: false,
     reversible: true,
     yarnFactor: 1.2,
+    gaugeFactor: { sts: 1, rows: 1.25 },
     gaugeNote: {
       en: 'Slightly wider stitches than stockinette at the same needle.',
       es: 'Puntos algo más anchos que el jersey con la misma aguja.',
@@ -122,6 +130,7 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     curls: false,
     reversible: true,
     yarnFactor: 1.2,
+    gaugeFactor: { sts: 1, rows: 1.25 },
     gaugeNote: {
       en: 'Behaves like seed stitch, with a blockier look.',
       es: 'Se comporta como el punto arroz, con un aspecto más de bloques.',
@@ -134,15 +143,16 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     repeatRows: 2,
     appearance: (col, row) => (col % 2 === 0 ? (row % 2 === 1 ? 'K1B' : 'K') : 'P'),
     curls: false,
-    reversible: true,
+    reversible: false,
     shapingRowParity: 0,
     flatStartsOnWS: true,
     yarnFactor: 1.5,
+    gaugeFactor: { sts: 0.8, rows: 1.25 },
     gaugeNote: {
-      en: 'Very stretchy and much wider than stockinette: a swatch is essential.',
-      es: 'Muy elástico y bastante más ancho que el jersey: la muestra es imprescindible.',
+      en: 'Very stretchy and much wider than stockinette, so it needs fewer stitches: a swatch is essential.',
+      es: 'Muy elástico y bastante más ancho que el jersey, así que lleva menos puntos: la muestra es imprescindible.',
     },
-    name: { en: "Fisherman's rib", es: 'Elástico inglés' },
+    name: { en: "Half fisherman's rib", es: 'Medio elástico inglés' },
     compilable: true,
   },
   brioche: {
@@ -151,15 +161,16 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     repeatRows: 2,
     appearance: (col, row) => (col % 2 === 0 ? (row % 2 === 1 ? 'K1B' : 'K') : 'P'),
     curls: false,
-    reversible: true,
+    reversible: false,
     shapingRowParity: 0,
     flatStartsOnWS: true,
     yarnFactor: 1.5,
+    gaugeFactor: { sts: 0.8, rows: 1.25 },
     gaugeNote: {
-      en: "Written as fisherman's rib, which looks nearly the same and is easier to fix.",
-      es: 'Se escribe como elástico inglés, que se ve casi igual y es más fácil de corregir.',
+      en: "Written as half fisherman's rib, a simpler plump rib. It is not the same fabric as brioche, so expect a difference.",
+      es: 'Se escribe como medio elástico inglés, un elástico gordito más simple. No es el mismo tejido que el punto inglés, así que esperá alguna diferencia.',
     },
-    name: { en: "Brioche (written as fisherman's rib)", es: 'Punto inglés (escrito como elástico inglés)' },
+    name: { en: "Brioche (written as half fisherman's rib)", es: 'Punto inglés (escrito como medio elástico inglés)' },
     compilable: true,
   },
   cable: {
@@ -169,6 +180,7 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     curls: false,
     reversible: false,
     yarnFactor: 1.3,
+    gaugeFactor: { sts: 1, rows: 1 },
     gaugeNote: {
       en: 'Cables pull the fabric in. Swatch the cable itself, not plain stockinette.',
       es: 'Las trenzas cierran el tejido. Hacé la muestra con la trenza, no en jersey liso.',
@@ -183,6 +195,7 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     curls: false,
     reversible: false,
     yarnFactor: 0.8,
+    gaugeFactor: { sts: 1, rows: 1 },
     gaugeNote: {
       en: 'Lace only shows its size after blocking: measure the swatch wet-blocked.',
       es: 'El calado muestra su tamaño recién después del bloqueo: medí la muestra bloqueada.',
@@ -191,6 +204,13 @@ export const STITCHES: Record<StitchType, StitchSpec> = {
     compilable: false,
   },
 };
+
+/** A starting gauge for this fabric from a stockinette stitch count. A real swatch overrides it. */
+export function suggestGauge(stitch: StitchType, stockinetteSts: number): { sts: number; rows: number } {
+  const factor = STITCHES[stitch]?.gaugeFactor ?? { sts: 1, rows: 1 };
+  const half = (value: number) => Math.round(value * 2) / 2;
+  return { sts: half(stockinetteSts * factor.sts), rows: half(stockinetteSts * 1.33 * factor.rows) };
+}
 
 /** Which op makes a stitch look like `look` from the right side, given the side being worked. */
 export function opFor(look: Appearance, side: RowSide): StitchOp {
@@ -346,6 +366,9 @@ export function rowToText(ops: StitchOp[], lang: 'en' | 'es'): string {
 
 /** Folds the longest repeated block: "Sl1 wyif, K3, *K1, P1; rep 40 more times, K4". */
 function describeRun(list: StitchOp[], labels: RowLabels): string {
+  if (list.length > 2 && list.every((op) => op === list[0]) && !COUNTED.includes(list[0])) {
+    return `*${labels[list[0]]}; ${labels.repeatTail(true)}`;
+  }
   const whole = findRepeat(list, (a, b) => a === b);
   if (whole && !list.slice(0, whole).every((u) => u === list[0])) {
     return `*${tokenize(list.slice(0, whole), labels).join(', ')}; ${labels.repeatTail(true)}`;
