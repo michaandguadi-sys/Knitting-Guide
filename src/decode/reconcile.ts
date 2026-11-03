@@ -199,7 +199,7 @@ export function reconcile(
       };
 
   // How it is made
-  const defaultMethod = garment.value === 'scarf' ? 'flat' : garment.value === 'beanie' || garment.value === 'cowl' ? 'round' : 'flat';
+  const defaultMethod = usualMethod(garment.value);
   let method: Finding<Decoded['method']['value']> = ai && ai.method !== 'unknown'
     ? { value: ai.method, confidence: scaleAi(ai.method_confidence, quality), source: 'ai', evidence: ai.method_evidence }
     : {
@@ -508,6 +508,10 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
 /** Applies a knitter's answer. Their eyes on the real piece outrank any model or measurement. */
 export function applyAnswer(decoded: Decoded, field: DecodeQuestion['field'], value: string): Decoded {
   if (value === CANT_TELL) {
+    // Nobody could see a seam and the reading was unsure, so a hat or cowl goes the usual way.
+    if (field === 'method' && usualMethod(decoded.garment.value) === 'round') {
+      return { ...decoded, method: { value: 'round', confidence: CONFIRM_BELOW, source: 'assumed', evidence: '' } };
+    }
     // With only a picture this cannot be checked, so the most likely answer stands.
     const current = decoded[field] as Finding<unknown>;
     return { ...decoded, [field]: { ...current, confidence: Math.max(current.confidence, CONFIRM_BELOW) } };
@@ -516,8 +520,16 @@ export function applyAnswer(decoded: Decoded, field: DecodeQuestion['field'], va
   switch (field) {
     case 'stitch':
       return { ...decoded, stitch: { ...you(value as StitchType), alternatives: decoded.stitch.alternatives } };
-    case 'garment':
-      return { ...decoded, garment: you(value as GarmentType) };
+    case 'garment': {
+      const garment = value as GarmentType;
+      // A method read for another item is no evidence for this one, so it has to be asked again.
+      const stale = garment !== decoded.garment.value && decoded.method.source !== 'you' && decoded.method.value !== usualMethod(garment);
+      return {
+        ...decoded,
+        garment: you(garment),
+        method: stale ? { ...decoded.method, confidence: Math.min(decoded.method.confidence, 0.3) } : decoded.method,
+      };
+    }
     case 'edgeStitch':
       return { ...decoded, edgeStitch: you(value as StitchType | 'same') };
     case 'colorwork':
@@ -537,6 +549,11 @@ export function applyAnswer(decoded: Decoded, field: DecodeQuestion['field'], va
     case 'crownWedges':
       return { ...decoded, crownWedges: you(value === 'null' ? null : parseInt(value, 10)) };
   }
+}
+
+/** How this item is normally worked, used when the picture does not show it. */
+export function usualMethod(garment: GarmentType): Decoded['method']['value'] {
+  return garment === 'beanie' || garment === 'cowl' ? 'round' : 'flat';
 }
 
 /** A scarf or test swatch is always written flat, so how the original was worked changes nothing. */

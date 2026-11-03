@@ -636,3 +636,41 @@ test('a close-up never points at a marked part it cannot mark', () => {
     if (!spotForQuestion(q.field, closeUp)) assert.ok(!/marked/i.test(where), `${q.field}: ${where}`);
   }
 });
+
+const readAsFlat = (confidence: number) => ({
+  ...applyAnswer(manualDecoded('en'), 'garment', 'beanie'),
+  method: { value: 'flat' as const, confidence, source: 'ai' as const, evidence: '' },
+});
+
+test('a hat whose seam nobody can see is written in the round', () => {
+  const d = applyAnswer(readAsFlat(0.4), 'method', CANT_TELL);
+  assert.equal(d.method.value, 'round');
+  assert.equal(d.method.source, 'assumed');
+  assert.equal(buildQuestions(d, 'en').some((q) => q.field === 'method'), false, 'not asked again');
+  const pattern = compilePattern(toBlueprint(applyAnswer(d, 'stitch', 'stockinette'), null, 'en'), {
+    targetSize: 'x', circumferenceCm: 56, lengthCm: 22, brimLengthCm: 7.5, gaugeSts10cm: 18, gaugeRows10cm: 24, easeCm: -4, needleSizeMm: 4.5, yarnWeight: 'Worsted / Aran', language: 'en',
+  });
+  assert.deepEqual(verifyPattern(pattern), []);
+  assert.equal(pattern.blueprint.construction, 'in_the_round');
+});
+
+test('"I cannot tell" does not overrule a seam the reading is sure of, or your own answer', () => {
+  assert.equal(buildQuestions(readAsFlat(0.9), 'en').some((q) => q.field === 'method'), false);
+  assert.equal(applyAnswer(readAsFlat(0.9), 'method', 'flat').method.source, 'you');
+  const sweater = { ...applyAnswer(manualDecoded('en'), 'garment', 'sweater'), method: { value: 'round' as const, confidence: 0.4, source: 'ai' as const, evidence: '' } };
+  assert.equal(applyAnswer(sweater, 'method', CANT_TELL).method.value, 'round', 'a sweater keeps the reading');
+});
+
+test('calling a piece a hat reopens a method that was read for something else', () => {
+  const swatch = {
+    ...manualDecoded('en'),
+    garment: { value: 'swatch' as const, confidence: 0.8, source: 'ai' as const, evidence: '' },
+    method: { value: 'flat' as const, confidence: 0.9, source: 'ai' as const, evidence: '' },
+  };
+  const hat = applyAnswer(swatch, 'garment', 'beanie');
+  assert.ok(buildQuestions(hat, 'en').some((q) => q.field === 'method'));
+  assert.equal(applyAnswer(hat, 'method', CANT_TELL).method.value, 'round');
+  const yours = applyAnswer({ ...swatch, method: { ...swatch.method, source: 'you', confidence: 1 } }, 'garment', 'beanie');
+  assert.equal(yours.method.value, 'flat');
+  assert.equal(buildQuestions(yours, 'en').some((q) => q.field === 'method'), false);
+});
