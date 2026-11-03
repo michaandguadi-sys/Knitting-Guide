@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { spotForQuestion } from '../decode/questionSpots';
+import { spotForQuestion, whereToLook } from '../decode/questionSpots';
 import { CANT_TELL, DecodeQuestion } from '../decode/types';
 import { Language } from '../i18n/translations';
 import { rasterToDataUrl } from '../vision/browserIO';
@@ -53,7 +53,7 @@ export const GuidedQuestions: React.FC<GuidedQuestionsProps> = ({ lang, question
 
       <div>
         <h3 id="guided-question" className="text-base sm:text-lg font-black text-[#1F2421]">{question.prompt}</h3>
-        {question.where && <p className="text-xs sm:text-sm font-semibold text-amber-900 mt-1">{question.where}</p>}
+        {question.where && <p className="text-xs sm:text-sm font-semibold text-amber-900 mt-1">{whereToLook(question, spot, lang)}</p>}
         <p className="text-xs text-[#6F756F] mt-1">{question.why}</p>
       </div>
 

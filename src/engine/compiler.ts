@@ -713,7 +713,9 @@ export function compileBeaniePattern(blueprint: KnitBlueprint, constraints: Knit
 
   const wedges = blueprint.crownWedges && blueprint.crownWedges >= 3 ? Math.round(blueprint.crownWedges) : 4;
   const targetCircumference = Math.max(30, circumferenceCm + easeCm);
-  const ribCrown = !topDown && RIB_CROWN_STITCHES.includes(mainStitch);
+  // Fisherman's rib always shapes in plain rib, because a K1b over a decrease lets stitches run.
+  const plumpRib = mainStitch === 'fishermans_rib' || mainStitch === 'brioche';
+  const ribCrown = !topDown && RIB_CROWN_STITCHES.includes(mainStitch) && (plumpRib || blueprint.crownStyle !== 'wedges');
   const divisor = ribCrown ? lcm(lcm(spec.repeatSts, brimSpec.repeatSts), 8) : lcm(lcm(spec.repeatSts, brimSpec.repeatSts), wedges * 2);
   const patternSts = roundToMultiple(targetCircumference * stsPerCm, divisor);
   const seamSts = flat ? 2 : 0;

@@ -175,9 +175,17 @@ test('a rib crown runs the ribs to the centre, with the right counts', () => {
   }
 });
 
+test('a rib hat can keep visible decrease lines when that is what the picture shows', () => {
+  const p = compileBeaniePattern(blueprint({ mainStitch: 'rib_1x1', crownStyle: 'wedges', crownWedges: 6 }), constraints());
+  assert.equal(p.calculatedGauge.castOnSts % 12, 0);
+  const ops = p.sections.find((s) => s.id === 'crown')!.instructions.flatMap((i) => i.rows ?? []).flatMap((r) => r.ops);
+  assert.ok(ops.includes('ssk'));
+  assert.deepEqual(verifyPattern(p), []);
+});
+
 test('no K1b ever lands on a decrease or an increase', () => {
   for (const construction of ['in_the_round', 'top_down_round', 'bottom_up_flat'] as ConstructionType[]) {
-    const p = compileBeaniePattern(blueprint({ mainStitch: 'fishermans_rib', construction, hasFoldedBrim: false }), constraints());
+    const p = compileBeaniePattern(blueprint({ mainStitch: 'fishermans_rib', construction, hasFoldedBrim: false, crownStyle: 'wedges' }), constraints());
     const crown = p.sections.find((s) => s.id === 'crown')!;
     assert.equal(crown.instructions.some((i) => i.rows?.some((r) => r.ops.includes('k1b'))), false, construction);
   }

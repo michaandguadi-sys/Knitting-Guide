@@ -172,6 +172,8 @@ Common confusions to rule out explicitly:
 - Machine-made fabric is common in shop and Pinterest pictures. Very fine even rib on a cap is usually machine rib.
 - If the picture looks AI-generated, with too-perfect rows or impossible stitches, or is a print with no real stitches, use input_kind not_real and say so in notes.
 - Printed fabric, or fleece with a knit look, has no real stitches.
+Crown shaping:
+- Count the lines of decreases that meet at the top and give that as crown_wedges. If the ribs run unbroken into the centre with no decrease lines, use null for crown_wedges.
 Which way it was worked:
 - In the round: no side seam, and a small step (jog) where horizontal stripes start and end. Rib or stockinette continues unbroken all the way around.
 - Flat: a vertical seam, or for a scarf two matching selvedge edges. A stockinette tube with a seam was worked flat.

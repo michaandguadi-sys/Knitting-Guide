@@ -5,7 +5,7 @@ import { analyzeWithGemini, checkGeminiKey, chooseModels, toGeminiSchema } from 
 import { CLAUDE_MODEL, analyzeWithClaude, checkClaudeKey, toClaudeSchema } from './claude';
 import { buildMarkImages, cropToFocus, decodePhotos, refineReport } from './decodePhotos';
 import { CANT_TELL } from './types';
-import { spotForQuestion } from './questionSpots';
+import { spotForQuestion, whereToLook } from './questionSpots';
 import { applyAnswer, buildQuestions, CONFIRM_BELOW, describeChanges, gaugeFromWidth, isReadyToCompile, keepYourAnswers, knownFacts, manualDecoded, toBlueprint, yarnFromGauge } from './reconcile';
 import { renderFabric } from '../vision/testing/synthFabric';
 import { compilePattern, verifyPattern } from '../engine/compiler';
@@ -168,6 +168,19 @@ const photo = (stitch: Parameters<typeof renderFabric>[0]['stitch']) => {
   return { slot: 'closeup' as const, raster, originalLongSide: 1600 };
 };
 const encodeJpeg = async () => 'AAAA';
+
+/** A piece of fabric on a plain pale table, so that it has a measured outline. */
+function onHat() {
+  const fabric = renderFabric({ stitch: 'rib_1x1', width: 520, height: 460, color: [120, 40, 40] });
+  const width = 960;
+  const height = 800;
+  const data = new Uint8ClampedArray(width * height * 4).fill(215);
+  for (let i = 3; i < data.length; i += 4) data[i] = 255;
+  for (let y = 0; y < 460; y++) {
+    data.set(fabric.data.subarray(y * 520 * 4, (y + 1) * 520 * 4), ((y + 170) * width + 220) * 4);
+  }
+  return { width, height, data };
+}
 
 const claudeReply = (body: unknown, extra: Record<string, unknown> = {}) =>
   json({
@@ -555,4 +568,71 @@ test('every question says what to look at', async () => {
   const all = [...report.questions, ...buildQuestions(d, 'es')];
   assert.ok(all.length >= 3);
   for (const q of all) assert.ok(q.where.length > 5, q.field);
+});
+
+test('the interview covers the crown, hand or machine, colours and yarn, each with a way out', async () => {
+  const report = await decodePhotos([photo('rib_1x1')], { language: 'en', encodeJpeg });
+  let d = applyAnswer(report.decoded, 'garment', 'beanie');
+  d = applyAnswer(d, 'stitch', 'rib_1x1');
+  const asked = buildQuestions(d, 'en');
+  const fields = asked.map((q) => q.field);
+  for (const field of ['crownWedges', 'madeBy', 'yarnWeight'] as const) assert.ok(fields.includes(field), field);
+  for (const q of asked) {
+    assert.ok(q.options.some((o) => o.value === CANT_TELL), `${q.field} has a way out`);
+    assert.ok(q.where.length > 5, `${q.field} says where to look`);
+  }
+  const crown = asked.find((q) => q.field === 'crownWedges')!;
+  assert.ok(crown.options.some((o) => o.value === 'null'), 'a rib hat can have ribs to the centre');
+});
+
+test('a plain hat is not offered ribs to the centre', () => {
+  let d = applyAnswer(manualDecoded('en'), 'garment', 'beanie');
+  d = applyAnswer(d, 'stitch', 'stockinette');
+  const crown = buildQuestions(d, 'en').find((q) => q.field === 'crownWedges')!;
+  assert.equal(crown.options.some((o) => o.value === 'null'), false);
+});
+
+test('the crown answer changes the pattern that gets written', () => {
+  const size = { targetSize: 'x', circumferenceCm: 56, lengthCm: 22, brimLengthCm: 7.5, gaugeSts10cm: 18, gaugeRows10cm: 24, easeCm: -4, needleSizeMm: 4.5, yarnWeight: 'Worsted / Aran' as const, language: 'en' as const };
+  let d = applyAnswer(manualDecoded('en'), 'garment', 'beanie');
+  d = applyAnswer(d, 'stitch', 'rib_1x1');
+  const crownOps = (decoded: typeof d) => {
+    const pattern = compilePattern(toBlueprint(decoded, null, 'en'), size);
+    assert.deepEqual(verifyPattern(pattern), []);
+    return pattern.sections.find((s) => s.id === 'crown')!.instructions.flatMap((i) => i.rows ?? []).flatMap((r) => r.ops);
+  };
+  const ribs = crownOps(applyAnswer(d, 'crownWedges', 'null'));
+  assert.ok(ribs.includes('p2tog') && !ribs.includes('ssk'));
+  const lines = crownOps(applyAnswer(d, 'crownWedges', '6'));
+  assert.ok(lines.includes('ssk'));
+  // An unsure guess of 4 wedges must not override the ribs.
+  const guessed = crownOps({ ...d, crownWedges: { value: 4, confidence: 0.3, source: 'ai', evidence: '' } });
+  assert.ok(guessed.includes('p2tog'));
+});
+
+test('a finger count sets the yarn and the needle together', () => {
+  const d = applyAnswer(manualDecoded('en'), 'yarnWeight', 'Chunky / Bulky');
+  assert.equal(d.yarnWeight.value, 'Chunky / Bulky');
+  assert.equal(d.needleMm.value, 6);
+  assert.equal(d.needleMm.source, 'you');
+});
+
+test('the new questions mark the right part of a whole hat', () => {
+  const hat = readFabric(onHat());
+  const crown = spotForQuestion('crownWedges', hat)!;
+  const made = spotForQuestion('madeBy', hat)!;
+  assert.ok(crown.y < 0.4, `crown ${crown.y}`);
+  assert.ok(made.y > 0.5, `edge ${made.y}`);
+  assert.equal(spotForQuestion('colorwork', hat), null);
+});
+
+test('a close-up never points at a marked part it cannot mark', () => {
+  const closeUp = readFabric(renderFabric({ stitch: 'rib_1x1', width: 960, height: 800, color: [120, 40, 40] }));
+  assert.equal(spotForQuestion('crownWedges', closeUp), null);
+  let d = applyAnswer(manualDecoded('en'), 'garment', 'beanie');
+  d = applyAnswer(d, 'stitch', 'rib_1x1');
+  for (const q of buildQuestions(d, 'en')) {
+    const where = whereToLook(q, spotForQuestion(q.field, closeUp), 'en');
+    if (!spotForQuestion(q.field, closeUp)) assert.ok(!/marked/i.test(where), `${q.field}: ${where}`);
+  }
 });

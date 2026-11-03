@@ -1,3 +1,4 @@
+import { YARN_SPECS } from '../engine/compiler';
 import { STITCHES } from '../engine/stitches';
 import { ColorworkType, GarmentType, KnitBlueprint, StitchType, StripeDefinition, YarnWeightCategory } from '../types/knit';
 import { ColorLayout } from '../vision/colors';
@@ -435,6 +436,72 @@ export function buildQuestions(decoded: Decoded, lang: Lang): DecodeQuestion[] {
       ],
     });
   }
+  if (open(decoded.crownWedges) && decoded.garment.value === 'beanie') {
+    const ribbed = ['rib_1x1', 'rib_2x2'].includes(decoded.stitch.value);
+    out.push({
+      field: 'crownWedges',
+      prompt: t('How does the top of the hat come together?', '¿Cómo se junta la punta del gorro?'),
+      where: t('Look at the marked top.', 'Mirá la punta marcada.'),
+      why: t('This decides how the crown is shaped, and it shows on the finished hat.', 'Esto define cómo se da forma a la coronilla, y se nota en el gorro terminado.'),
+      options: [
+        ...(ribbed
+          ? [{ value: 'null', label: t('The ribs run into the centre', 'Los elásticos llegan al centro'), hint: t('Columns meet at the top with no separate lines.', 'Las columnas se juntan arriba, sin líneas aparte.') }]
+          : []),
+        ...[4, 6, 8].map((n) => ({
+          value: String(n),
+          label: t(`${n} lines of decreases`, `${n} líneas de disminuciones`),
+          hint: t('Count the lines where the fabric narrows toward the top.', 'Contá las líneas donde el tejido se angosta hacia arriba.'),
+        })),
+        cantTell,
+      ],
+    });
+  }
+  if (open(decoded.madeBy) && decoded.garment.value !== 'swatch') {
+    out.push({
+      field: 'madeBy',
+      prompt: t('Does it look handmade or machine-made?', '¿Parece hecho a mano o a máquina?'),
+      where: t('Look at how even the stitches are, and at the edge if it shows.', 'Mirá qué tan parejos son los puntos, y el borde si se ve.'),
+      why: t('Machines use finer yarn and stitches hands cannot match. If so, you will get the closest hand-knit version.', 'Las máquinas usan hilos más finos y puntos que no se pueden igualar a mano. En ese caso te doy la versión a mano más parecida.'),
+      options: [
+        { value: 'hand', label: t('Handmade', 'A mano'), hint: t('Slightly uneven stitches and a soft edge.', 'Puntos algo desparejos y borde suave.') },
+        { value: 'machine', label: t('Machine-made', 'A máquina'), hint: t('Perfectly even, very fine, with a sewn or cut edge or a label.', 'Muy parejo y fino, con borde cosido o cortado, o con etiqueta.') },
+        cantTell,
+      ],
+    });
+  }
+  if (open(decoded.colorwork)) {
+    const choices: [ColorworkType, string, string][] = [
+      ['solid', t('One colour', 'Un color'), ''],
+      ['vertical_stripes', t('Vertical stripes', 'Rayas verticales'), ''],
+      ['horizontal_stripes', t('Horizontal stripes', 'Rayas horizontales'), ''],
+      ['stranded_motif', t('A motif, with two colours in a row', 'Un motivo, con dos colores en la vuelta'), t('Like Fair Isle. The colours follow the stitch grid.', 'Como el Fair Isle. Los colores siguen la grilla de puntos.')],
+      ['color_block', t('Big blocks of colour', 'Grandes bloques de color'), ''],
+      ['variegated', t('One multicoloured yarn', 'Una lana matizada'), t('The colour changes by itself, in small flecks.', 'El color cambia solo, en pintitas.')],
+    ];
+    out.push({
+      field: 'colorwork',
+      prompt: t('How are the colours arranged?', '¿Cómo están los colores?'),
+      where: t('Look where one colour meets another.', 'Mirá donde un color se junta con otro.'),
+      why: t('Each arrangement is knitted a different way.', 'Cada disposición se teje de otra forma.'),
+      options: [...choices.map(([value, label, hint]) => ({ value, label, hint })), cantTell],
+    });
+  }
+  if (open(decoded.yarnWeight)) {
+    const sizes: [YarnWeightCategory, string][] = [
+      ['Super Bulky', t('About 2', 'Unos 2')],
+      ['Chunky / Bulky', t('About 3', 'Unos 3')],
+      ['Worsted / Aran', t('About 4', 'Unos 4')],
+      ['Sport', t('About 5', 'Unos 5')],
+      ['Fingering / 4-ply', t('6 or more', '6 o más')],
+    ];
+    out.push({
+      field: 'yarnWeight',
+      prompt: t('How many stitches fit across a finger?', '¿Cuántos puntos entran en el ancho de un dedo?'),
+      where: t('Only if you have the piece, or a hand or coin is in the picture.', 'Solo si tenés la prenda, o si hay una mano o una moneda en la foto.'),
+      why: t('A photo has no scale. This tells me the yarn and needle.', 'Una foto no tiene escala. Esto me dice la lana y la aguja.'),
+      options: [...sizes.map(([value, label]) => ({ value, label, hint: '' })), cantTell],
+    });
+  }
   return out;
 }
 
@@ -453,6 +520,12 @@ export function applyAnswer(decoded: Decoded, field: DecodeQuestion['field'], va
       return { ...decoded, garment: you(value as GarmentType) };
     case 'edgeStitch':
       return { ...decoded, edgeStitch: you(value as StitchType | 'same') };
+    case 'colorwork':
+      return { ...decoded, colorwork: you(value as ColorworkType) };
+    case 'yarnWeight': {
+      const yarn = value as YarnWeightCategory;
+      return { ...decoded, yarnWeight: you(yarn), needleMm: you(YARN_SPECS[yarn].defaultNeedle) };
+    }
     case 'method':
       return { ...decoded, method: you(value as Decoded['method']['value']) };
     case 'direction':
@@ -550,6 +623,11 @@ export function toBlueprint(decoded: Decoded, reading: FabricReading | null, lan
     secondaryStitch: edge === 'same' ? undefined : edge,
     hasFoldedBrim: decoded.foldedBrim.value,
     crownWedges: decoded.crownWedges.value ?? undefined,
+    // Decrease lines only count once someone is sure of them. Otherwise ribs run to the centre.
+    crownStyle:
+      decoded.crownWedges.value !== null && (decoded.crownWedges.source === 'you' || decoded.crownWedges.confidence >= CONFIRM_BELOW)
+        ? 'wedges'
+        : 'ribs',
     colorworkType: colorwork,
     stripes,
     features: decoded.features,

@@ -71,7 +71,7 @@ export interface PhotoMark {
 /** Answer meaning "I cannot tell from my picture": the best guess is kept and not asked again. */
 export const CANT_TELL = '__cant_tell';
 
-export type QuestionField = 'stitch' | 'edgeStitch' | 'method' | 'direction' | 'foldedBrim' | 'garment' | 'madeBy' | 'crownWedges';
+export type QuestionField = 'stitch' | 'edgeStitch' | 'method' | 'direction' | 'foldedBrim' | 'garment' | 'madeBy' | 'crownWedges' | 'colorwork' | 'yarnWeight';
 
 export interface QuestionOption {
   value: string;

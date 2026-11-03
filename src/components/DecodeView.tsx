@@ -719,8 +719,9 @@ export const DecodeView: React.FC<DecodeViewProps> = ({ lang, onApply, onOpenSet
                     <option value="false">{t('No', 'No')}</option>
                   </select>
                 </FindingRow>
-                <FindingRow label={t('Crown wedges', 'Gajos de la coronilla')} finding={decoded.crownWedges} t={t}>
-                  <select value={String(decoded.crownWedges.value ?? 4)} onChange={(e) => setField('crownWedges', parseInt(e.target.value, 10))} className={selectClass} aria-label={t('Crown wedges', 'Gajos de la coronilla')}>
+                <FindingRow label={t('Crown shaping', 'Forma de la coronilla')} finding={decoded.crownWedges} t={t}>
+                  <select value={String(decoded.crownWedges.value ?? 'ribs')} onChange={(e) => setField('crownWedges', e.target.value === 'ribs' ? null : parseInt(e.target.value, 10))} className={selectClass} aria-label={t('Crown shaping', 'Forma de la coronilla')}>
+                    <option value="ribs">{t('No lines: ribs to the centre', 'Sin líneas: elásticos al centro')}</option>
                     {[4, 5, 6, 8].map((n) => (
                       <option key={n} value={n}>{n}</option>
                     ))}

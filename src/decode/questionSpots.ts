@@ -1,5 +1,5 @@
 import { FabricReading } from '../vision/pipeline';
-import { QuestionField } from './types';
+import { DecodeQuestion, QuestionField } from './types';
 
 /** A rectangle on the picture, as fractions of its width and height. */
 export interface PictureSpot {
@@ -25,7 +25,8 @@ export function spotForQuestion(field: QuestionField, reading: FabricReading): P
     h: segment.box.height / raster.height,
   };
   switch (field) {
-    case 'stitch': {
+    case 'stitch':
+    case 'yarnWeight': {
       const clearest = [...texture.tiles]
         .sort((a, b) => b.periodicity * b.yarnPurity - a.periodicity * a.yarnPurity)[0];
       if (!clearest) return null;
@@ -39,10 +40,22 @@ export function spotForQuestion(field: QuestionField, reading: FabricReading): P
     }
     case 'foldedBrim':
     case 'edgeStitch':
+    case 'madeBy':
       return segment.fullFrame ? null : { x: box.x, y: box.y + box.h * 0.72, w: box.w, h: box.h * 0.28 };
     case 'direction':
+    case 'crownWedges':
       return segment.fullFrame ? null : { x: box.x + box.w * 0.2, y: box.y, w: box.w * 0.6, h: box.h * 0.25 };
     default:
       return null;
   }
+}
+
+const ABOUT_A_PART: QuestionField[] = ['foldedBrim', 'edgeStitch', 'direction', 'crownWedges'];
+
+/** Never says "the marked part" when a close-up or a missing outline left nothing to mark. */
+export function whereToLook(question: DecodeQuestion, spot: PictureSpot | null, language: 'en' | 'es'): string {
+  if (spot || !ABOUT_A_PART.includes(question.field)) return question.where;
+  return language === 'es'
+    ? 'No puedo marcarlo en esta foto. Si esa parte no aparece, elegí "No se ve en la foto".'
+    : 'I cannot mark this on the photo. If that part is not in the picture, choose "I can\'t tell from the picture".';
 }
